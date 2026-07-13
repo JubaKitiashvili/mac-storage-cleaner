@@ -1,0 +1,21 @@
+{
+  "name": "mac-storage-cleaner",
+  "owner": {
+    "name": "Juba Kitiashvili",
+    "url": "https://github.com/JubaKitiashvili"
+  },
+  "metadata": {
+    "description": "Safe, transparent macOS disk-space reclamation as a Claude skill.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "mac-storage-cleaner",
+      "source": "./",
+      "description": "Safely reclaim disk space on a Mac: survey usage, auto-clear only pure caches, Trash anything riskier (reversible), ask before anything expensive, log every deletion.",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["macos", "disk-space", "cache", "cleanup", "storage"]
+    }
+  ]
+}
