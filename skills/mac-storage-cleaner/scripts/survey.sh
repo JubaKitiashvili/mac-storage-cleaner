@@ -32,19 +32,24 @@ echo
 
 echo "===== App caches — Electron & browsers (safe; quit the app first) ====="
 # Electron-style cache subfolders (depth<=2) + known browser profile caches.
-{
-  find "$HOME/Library/Application Support" -maxdepth 2 -type d \
-    \( -name Cache -o -name "Code Cache" -o -name GPUCache -o -name DawnWebGPUCache \) 2>/dev/null
-  for b in \
-    "Google/Chrome" "BraveSoftware/Brave-Browser" "Microsoft Edge" \
-    "Arc" "Vivaldi" "Chromium" "com.operasoftware.Opera"; do
-    for sub in "Default/Cache" "Default/Code Cache" "Default/Service Worker/CacheStorage"; do
-      d="$HOME/Library/Application Support/$b/$sub"
-      [ -d "$d" ] && printf '%s\n' "$d"
+# Capture the listing once, so the "found little" message reflects what was
+# ACTUALLY shown (incl. the deeper browser-profile caches) — not a re-run of a
+# shallower find that could disagree with it.
+apps=$(
+  {
+    find "$HOME/Library/Application Support" -maxdepth 2 -type d \
+      \( -name Cache -o -name "Code Cache" -o -name GPUCache -o -name DawnWebGPUCache \) 2>/dev/null
+    for b in \
+      "Google/Chrome" "BraveSoftware/Brave-Browser" "Microsoft Edge" \
+      "Arc" "Vivaldi" "Chromium" "com.operasoftware.Opera"; do
+      for sub in "Default/Cache" "Default/Code Cache" "Default/Service Worker/CacheStorage"; do
+        d="$HOME/Library/Application Support/$b/$sub"
+        [ -d "$d" ] && printf '%s\n' "$d"
+      done
     done
-  done
-} | while IFS= read -r d; do du -sh "$d" 2>/dev/null; done | sort -rh | head -15
-[ -z "$(find "$HOME/Library/Application Support" -maxdepth 2 -type d \( -name Cache -o -name "Code Cache" -o -name GPUCache -o -name DawnWebGPUCache \) 2>/dev/null | head -1)" ] && echo "  (scan found little; some may be TCC-protected)"
+  } | while IFS= read -r d; do du -sh "$d" 2>/dev/null; done | sort -rh | head -15
+)
+if [ -n "$apps" ]; then printf '%s\n' "$apps"; else echo "  (no app caches found, or they're TCC-protected)"; fi
 echo
 
 echo "===== ASK first — big, but expensive to restore or not a cache ====="

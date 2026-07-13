@@ -22,7 +22,7 @@ if ! mdutil -s / 2>/dev/null | grep -qi 'indexing enabled'; then
   echo "    here and may list apps that are actually installed. Treat as informational"
   echo "    only and confirm every app by hand before removing anything."
 fi
-export IDS="$(installed_bundle_ids | sort -u)"
+IDS="$(installed_bundle_ids | sort -u)"   # plain var: container_is_orphan is a shell function, not a subprocess
 for d in "$HOME/Library/Containers/"*; do
   [ -d "$d" ] || continue
   name=$(basename "$d")

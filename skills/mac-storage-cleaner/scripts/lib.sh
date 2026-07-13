@@ -168,6 +168,9 @@ container_is_orphan () {
   done <<EOF
 ${IDS:-}
 EOF
+  # A quote in the name would break the mdfind query string; real bundle IDs
+  # never contain one, so treat such a name as inconclusive (not orphan).
+  case "$n" in *\'*|*\"*) return 1 ;; esac
   if mdfind "kMDItemContentTypeTree == 'com.apple.application-bundle' && kMDItemCFBundleIdentifier == '$n'" 2>/dev/null | grep -q .; then
     return 1
   fi

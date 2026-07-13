@@ -36,7 +36,11 @@ done
 # the rm total above; both are logged for the audit trail).
 if command -v brew >/dev/null 2>&1; then
   echo "  brew cleanup (brew cleanup -s --prune=all)..."
-  brew cleanup -s --prune=all >/dev/null 2>&1 && { echo "  done: brew cleanup"; log_op cleaned "brew cache" "brew cleanup -s --prune=all"; }
+  if brew cleanup -s --prune=all >/dev/null 2>&1; then
+    echo "  done: brew cleanup"; log_op cleaned "brew cache" "brew cleanup -s --prune=all"
+  else
+    echo "  (brew cleanup didn't complete — skipped)"
+  fi
 fi
 # Gate simctl on a REAL developer install. /usr/bin/xcrun is a stub present on
 # every Mac, so `command -v xcrun` passes even with no Xcode/CLT — and calling it
@@ -44,7 +48,11 @@ fi
 # ambush a non-developer just trying to free space. xcode-select -p only succeeds
 # when a toolchain is actually selected.
 if xcode-select -p >/dev/null 2>&1 && command -v xcrun >/dev/null 2>&1; then
-  xcrun simctl delete unavailable >/dev/null 2>&1 && { echo "  done: removed unavailable simulators"; log_op cleaned "unavailable simulators" "simctl delete unavailable"; }
+  if xcrun simctl delete unavailable >/dev/null 2>&1; then
+    echo "  done: removed unavailable simulators"; log_op cleaned "unavailable simulators" "simctl delete unavailable"
+  else
+    echo "  (no unavailable simulators to remove, or simctl unavailable)"
+  fi
 fi
 
 echo
