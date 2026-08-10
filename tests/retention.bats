@@ -52,3 +52,44 @@ mk_ds () {   # four version dirs, mtimes 4d..1d old; "18.5 (22F76)" newest
   [ "$status" -eq 0 ]
   [[ "$output" == *"(keeps 2 newest versions)"* ]]
 }
+
+mk_claude () {
+  VR="$HOME/.local/share/claude/versions"
+  mkdir -p "$VR/1.0.10" "$VR/1.0.11" "$VR/1.0.12" "$HOME/.local/bin"
+  touch -t "$(date -v-3d +%Y%m%d%H%M)" "$VR/1.0.10"
+  touch -t "$(date -v-2d +%Y%m%d%H%M)" "$VR/1.0.11"
+  touch -t "$(date -v-1d +%Y%m%d%H%M)" "$VR/1.0.12"
+}
+
+@test "resolve_active_version_dir follows the launcher symlink" {
+  mk_claude
+  ln -s "$VR/1.0.11/bin/claude" "$HOME/.local/bin/claude"
+  mkdir -p "$VR/1.0.11/bin"
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; resolve_active_version_dir \"$VR\" \"$HOME/.local/bin/claude\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.0.11" ]
+}
+
+@test "clean-safe keeps active (via symlink) + 1 newest other; removes the rest" {
+  mk_claude
+  mkdir -p "$VR/1.0.11/bin"
+  ln -s "$VR/1.0.11/bin/claude" "$HOME/.local/bin/claude"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ -d "$VR/1.0.11" ]      # active — even though not newest
+  [ -d "$VR/1.0.12" ]      # 1 newest non-active kept
+  [ ! -e "$VR/1.0.10" ]    # removed
+}
+
+@test "broken active symlink fails closed: agent versions untouched" {
+  mk_claude
+  ln -s "$VR/9.9.9/bin/claude" "$HOME/.local/bin/claude"   # dangling
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ -d "$VR/1.0.10" ]; [ -d "$VR/1.0.11" ]; [ -d "$VR/1.0.12" ]
+  [[ "$output" == *"skipped (active version unknown): Claude Code"* ]]
+}
+
+@test "missing symlink fails closed too" {
+  mk_claude
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ -d "$VR/1.0.10" ]
+}

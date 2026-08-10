@@ -363,6 +363,42 @@ guard_procs_running () {   # guard_procs_running <exact-process-name>...
   return 1
 }
 
+# --- AI CLI version retention ---------------------------------------------
+# Auto-updating AI CLIs accumulate whole old versions (hundreds of MB each).
+# The ACTIVE version is pinned by resolving the launcher symlink — never by
+# newest-mtime, because updaters pre-download the next version before switching
+# (mole's lesson). Any doubt about which version is active => skip entirely.
+AI_AGENT_SPECS=(
+  "$HOME/.local/share/claude/versions|Claude Code|$HOME/.local/bin/claude"
+  "$HOME/.local/share/cursor-agent/versions|Cursor Agent|$HOME/.local/bin/cursor-agent"
+  "$HOME/.copilot/pkg/universal|GitHub Copilot CLI|$HOME/.local/bin/copilot"
+)
+
+# Echo the ACTIVE version dir NAME under <versions_root>, resolved from
+# <symlink>. rc 1 on missing/broken/out-of-root link (caller must skip).
+resolve_active_version_dir () {
+  local root="$1" link="$2" target pdir rroot
+  [ -L "$link" ] || return 1
+  target=$(readlink "$link") || return 1
+  case "$target" in /*) ;; *) target="$(dirname "$link")/$target" ;; esac
+  # Resolve the containing directory physically (cd -P) so a missing version
+  # dir/bin dir fails closed here. NOTE: we deliberately do NOT additionally
+  # require the leaf binary itself to exist — only that its containing
+  # directory chain resolves — so a version whose bin/ dir exists but whose
+  # exact binary name changed is still recognized as active.
+  pdir=$(cd -P "$(dirname "$target")" 2>/dev/null && pwd -P) || return 1
+  target="$pdir/$(basename "$target")"
+  # $root must be resolved the same way (cd -P) before the prefix check:
+  # $HOME itself commonly sits under a symlinked path on macOS (/tmp ->
+  # /private/tmp, /var -> /private/var), so comparing a physically-resolved
+  # $target against a logical $root would spuriously mismatch and fail every
+  # agent closed even on a perfectly healthy install.
+  rroot=$(cd -P "$root" 2>/dev/null && pwd -P) || return 1
+  case "$target" in "$rroot"/*) ;; *) return 1 ;; esac
+  local rel="${target#$rroot/}"
+  printf '%s' "${rel%%/*}"
+}
+
 # Echo a skip reason (rc 0) when this safe-tier path's owner may be live.
 # rc 1 = no guard applies or owner idle. Only Xcode-family paths and the
 # Gradle daemon are guarded — npm/bun caches are content-addressed and their

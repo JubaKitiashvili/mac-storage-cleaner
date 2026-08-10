@@ -92,6 +92,43 @@ EOF
   [ "$removed_any" = 1 ] && echo "  (kept $KEEPN newest in $(basename "$base"))"
 done
 
+# AI CLI old versions: keep the active one (symlink-pinned) + N newest others.
+AIKEEP="${MSC_AI_AGENTS_KEEP:-1}"
+case "$AIKEEP" in ''|*[!0-9]*) AIKEEP=1 ;; esac
+for spec in "${AI_AGENT_SPECS[@]}"; do
+  root="${spec%%|*}"; rest="${spec#*|}"; label="${rest%%|*}"; link="${rest#*|}"
+  [ -d "$root" ] || continue
+  if is_whitelisted "$root"; then
+    echo "  skipped (whitelisted): $root"; log_op skipped-whitelisted "-" "$root"; skipped=$((skipped+1)); continue
+  fi
+  if ! active=$(resolve_active_version_dir "$root" "$link"); then
+    echo "  skipped (active version unknown): $label"
+    continue
+  fi
+  kept_others=0
+  while IFS= read -r child; do
+    [ -n "$child" ] || continue
+    [ "$child" = "$active" ] && continue
+    if [ "$kept_others" -lt "$AIKEEP" ]; then kept_others=$((kept_others+1)); continue; fi
+    p="$root/$child"
+    [ -e "$p" ] || continue
+    kb=$(size_kb "$p")
+    if [ "$DRY" = 1 ]; then
+      echo "  would remove $(human_kb "${kb:-0}")  $p ($label old version)"
+      total_kb=$((total_kb + ${kb:-0})); continue
+    fi
+    rm -rf "$p" 2>/dev/null
+    if [ -e "$p" ]; then
+      echo "  skipped: $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+    else
+      echo "  removed $(human_kb "${kb:-0}")  $p ($label old version)"
+      log_op removed "$(human_kb "${kb:-0}")" "$p"; total_kb=$((total_kb + ${kb:-0}))
+    fi
+  done <<EOF
+$(ls -1t "$root" 2>/dev/null)
+EOF
+done
+
 # Tool-native cleanups that are unambiguously safe (freed space is separate from
 # the rm total above; both are logged for the audit trail).
 if command -v brew >/dev/null 2>&1; then
