@@ -82,6 +82,27 @@ teardown () { teardown_fake_home; }
   [ -d "$PB/fresh-item" ]
 }
 
+@test "Handoff pasteboard: a blocked removal is reported/logged as skipped, not silently dropped" {
+  # Portable failure simulation: dropping write permission on the PARENT dir
+  # (not the item itself) makes rm -rf fail to unlink the child while `find`
+  # can still list it (read+execute survive) — exercises the same failure
+  # shape as a real TCC/App-Management block. Root bypasses permission checks
+  # entirely, so this can't be forced portably there; skip rather than flake.
+  [ "$(id -u)" -eq 0 ] && skip "cannot simulate a permission-denied rm as root"
+  PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
+  mkdir -p "$PB/stuck-item"
+  touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/stuck-item"
+  chmod 555 "$PB"
+  run bash "$SCRIPTS/clean-safe.sh"
+  chmod 755 "$PB"   # restore so bats' teardown can rm -rf the fake HOME
+  # `|| false` for the same bash-3.2 errexit-masking reason as the conda test
+  # above: without it, the trailing `[ -d ]` (true regardless of whether the
+  # skip message ever printed) would silently swallow a failed `[[ ]]`.
+  [[ "$output" == *"skipped (protected or in use): $PB/stuck-item"* ]] || false
+  [ -d "$PB/stuck-item" ]
+  grep -q "skipped" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+}
+
 @test "conda cleanup runs the owner command, never rm" {
   make_stub conda 0
   mkdir -p "$HOME/miniconda3/pkgs/somepkg"
