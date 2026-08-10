@@ -126,7 +126,14 @@ validate_target_path () {
   local p="$1"
   [ -n "$p" ] || return 1
   case "$p" in /*) ;; *) return 1 ;; esac          # absolute only
-  case "$p" in *[![:print:]]*) return 1 ;; esac    # control chars / newline
+  # Control chars / newline only — locale-independent. Force C so an ambient
+  # non-UTF-8-aware locale doesn't misclassify legitimate multibyte UTF-8
+  # filenames (café.txt, Georgian names, ...) as non-printable and refuse
+  # them; [:cntrl:] under C is 0x00-0x1F/0x7F in every locale, so real control
+  # characters (newline, tab, ...) are still caught while UTF-8 high bytes
+  # pass through untouched. Scoped to this function via bash's dynamic `local`.
+  local LC_ALL=C
+  case "$p" in *[[:cntrl:]]*) return 1 ;; esac
   case "/$p/" in */../*) return 1 ;; esac          # no .. traversal
   # Normalize // and /./ spellings, strip trailing / and /.
   local norm
@@ -169,7 +176,24 @@ _vtp_denied () {
   done
   case "$lower" in
     /applications/*.app) return 0 ;;   # installed app bundles: use an uninstaller
-    /users/*) case "${lower#/users/}" in */*) ;; *) return 0 ;; esac ;;  # any /Users/<name>
+    /users/*)
+      # Deny the ENTIRE subtree of every other user's home, not just the bare
+      # /Users/<name> entry — otherwise a literal path (or a symlink resolved
+      # by the ancestor check below) can reach inside one. Two carve-outs:
+      # the current user's own home (its top-level dirs are already denied
+      # individually above; everything else under it is a legitimate trash
+      # target) and /Users/Shared/<child> (a shared, not personal, location —
+      # stale installers etc. are legitimate targets; /Users/Shared itself
+      # stays denied, same as today).
+      local rest name
+      rest="${lower#/users/}"
+      name="${rest%%/*}"
+      case "$home_lower" in
+        "/users/$name"|"/users/$name/"*) return 1 ;;
+      esac
+      [ "$name" = "shared" ] && [ "$rest" != "shared" ] && return 1
+      return 0
+      ;;
   esac
   return 1
 }

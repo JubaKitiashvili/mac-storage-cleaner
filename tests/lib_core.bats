@@ -72,3 +72,24 @@ teardown () { teardown_fake_home; }
   [[ "$output" == *"REFUSED"* ]]
   grep -q "refused" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }
+
+@test "validate_target_path refuses another user's home subtree (not just the bare name)" {
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "/Users/someoneelse/Documents/file"
+  [ "$status" -ne 0 ]
+}
+
+@test "validate_target_path accepts /Users/Shared children (not personal; own home stays accepted too)" {
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "/Users/Shared/OldInstaller.dmg"
+  [ "$status" -eq 0 ] || { echo "REFUSED /Users/Shared child"; false; }
+}
+
+@test "validate_target_path accepts unicode filenames under LC_ALL=C and still refuses control chars in both locales" {
+  mkdir -p "$HOME/Downloads"
+  run env LC_ALL=C bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$HOME/Downloads/café.txt"
+  [ "$status" -eq 0 ] || { echo "REFUSED unicode path under LC_ALL=C"; false; }
+
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$(printf '/tmp/a\\nb')\""
+  [ "$status" -ne 0 ]
+  run env LC_ALL=C bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$(printf '/tmp/a\\nb')\""
+  [ "$status" -ne 0 ]
+}

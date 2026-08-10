@@ -19,6 +19,7 @@
 /opt/homebrew
 /Users
 /Users/someoneelse
+/Users/someoneelse/Documents/thesis.docx
 /Volumes
 /dev
 /tmp
