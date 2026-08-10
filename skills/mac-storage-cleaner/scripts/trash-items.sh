@@ -16,6 +16,16 @@ for p in "$@"; do
     echo "  not found: $p"
     continue
   fi
+  # Refuse BEFORE the size scan: du -sk on a protected root ($HOME, /Users,
+  # ...) can walk gigabytes of data just to print a number nobody asked for
+  # once we're about to say REFUSED anyway. trash_path still re-validates
+  # internally (rc 2) as defense in depth for callers that invoke it
+  # directly, but refusal here must stay O(1).
+  if ! validate_target_path "$p"; then
+    echo "  REFUSED (protected system/user root — never trashed by this tool): $p"
+    log_op refused "-" "$p"
+    continue
+  fi
   sz=$(human_kb "$(size_kb "$p")")
   rc=0; trash_path "$p" || rc=$?
   if [ "$rc" -eq 0 ]; then

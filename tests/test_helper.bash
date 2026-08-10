@@ -12,6 +12,13 @@ setup_fake_home () {
   esac
   mkdir -p "$HOME/.Trash" "$HOME/.config/mac-storage-cleaner"
   export MSC_WHITELIST_FILE="$HOME/.config/mac-storage-cleaner/whitelist"
+  # trash_path defaults to the REAL /usr/bin/trash when MSC_TRASH_BIN is
+  # unset, and that binary talks to the actual Finder/Trash subsystem — it
+  # does NOT respect our fake $HOME, so an un-stubbed test can move real
+  # items into the real user's ~/.Trash. Default it to a path that can never
+  # exist so trash_path always falls through to the (stubbed-or-refused)
+  # Finder/mv stages unless a test deliberately overrides it.
+  export MSC_TRASH_BIN=/nonexistent-msc-trash
   # lib.sh expands SAFE_PATHS from $HOME at source time — always source AFTER this.
 }
 

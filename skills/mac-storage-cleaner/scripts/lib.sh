@@ -203,12 +203,21 @@ _vtp_denied () {
 # order): /usr/bin/trash by ABSOLUTE path (ships with macOS 14+, headless-safe,
 # immune to PATH shadowing) -> Finder AppleScript (argv-passed, injection-safe)
 # -> same-volume mv into ~/.Trash (loses "Put Back", still restorable by hand).
-# rc 0 = moved (TRASH_METHOD set), rc 1 = could not move, rc 2 = refused.
+# rc 0 = moved (TRASH_METHOD set to trash-cli|finder|mv), rc 1 = could not
+# move, rc 2 = refused. TRASH_METHOD is reset to "" at the top of every call,
+# so rc 0 with an EMPTY TRASH_METHOD means the path was already gone (nothing
+# to move) — only a non-empty TRASH_METHOD means something actually moved.
 # NOTE: trashed items occupy disk until the Trash is emptied — pure caches use
 # direct rm in clean-safe.sh instead, so their space frees immediately.
 TRASH_METHOD=""
 trash_path () {
   local p="$1"
+  # Reset on every call, before any return — otherwise the "already gone"
+  # shortcut below (rc 0, nothing to move) would leave a PRIOR call's method
+  # sitting in TRASH_METHOD, and a caller checking rc==0 could misreport what
+  # happened. Empty TRASH_METHOD on rc 0 unambiguously means "nothing moved";
+  # non-empty TRASH_METHOD on rc 0 means it was actually moved this call.
+  TRASH_METHOD=""
   # Validate BEFORE the existence check: a protected root must be refused
   # (rc 2) even if it happens not to exist in the caller's context (e.g. a
   # symlink race, or a test fixture that never materializes it) — refusal is
