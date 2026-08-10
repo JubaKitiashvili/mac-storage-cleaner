@@ -79,9 +79,13 @@ app folder. Exact paths: `references/cache-catalog.md`.
 ### User whitelist
 
 `~/.config/mac-storage-cleaner/whitelist` — one path or glob per line, `#`
-comments, `~/` expansion; protects the entry and everything under it in every
-mode. When the user says "always keep X", add a line here (and tell them where
-it lives) instead of relying on memory.
+comments, `~/` expansion; protects the entry and everything under it, and
+governs every tier `clean-safe.sh` touches (safe, keep-N, AI-agent, Handoff),
+dry-run included — surfaced by the survey too. `find-extras.sh` and
+`trash-items.sh` do **not** read it (they only ever act on paths the user
+explicitly approves that session), so when the user says "always keep X", add
+a line here **and** keep checking find-extras candidates against it yourself
+before proposing removal — the script won't stop you.
 
 ### 3. Surface the "ask" tier — recommend, don't delete
 
