@@ -12,8 +12,13 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 log_writable || echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — items will still be trashed, but this run will NOT be recorded."
 moved=0
 for p in "$@"; do
-  if [ ! -e "$p" ]; then
+  if [ ! -e "$p" ] && [ ! -L "$p" ]; then
     echo "  not found: $p"
+    continue
+  fi
+  if ! validate_target_path "$p"; then
+    echo "  REFUSED (protected system/user root — never trashed by this tool): $p"
+    log_op refused "-" "$p"
     continue
   fi
   sz=$(human_kb "$(size_kb "$p")")

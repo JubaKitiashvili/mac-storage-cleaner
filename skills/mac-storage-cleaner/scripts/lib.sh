@@ -116,6 +116,64 @@ log_writable () {
   mkdir -p "$LOG_DIR" 2>/dev/null && : >> "$LOG_DIR/operations.log" 2>/dev/null
 }
 
+# --- Trash-target validation ----------------------------------------------
+# trash-items.sh accepts arbitrary user-approved argv paths, so refuse the ones
+# that are NEVER right to trash: system roots, the home dir and its top-level
+# folders, other users' homes. Deny-only (mole's model): symlink resolution can
+# only REVOKE permission, never grant it. APFS is case-insensitive by default,
+# so all comparisons are lowercased. rc 0 = OK, rc 1 = refused.
+validate_target_path () {
+  local p="$1"
+  [ -n "$p" ] || return 1
+  case "$p" in /*) ;; *) return 1 ;; esac          # absolute only
+  case "$p" in *[![:print:]]*) return 1 ;; esac    # control chars / newline
+  case "/$p/" in */../*) return 1 ;; esac          # no .. traversal
+  # Normalize // and /./ spellings, strip trailing / and /.
+  local norm
+  norm=$(printf '%s' "$p" | sed -e 's#//*#/#g' -e 's#/\./#/#g' -e 's#/\.$##' -e 's#\(.\)/$#\1#')
+  [ -n "$norm" ] || norm="/"
+  _vtp_denied "$norm" && return 1
+  # Ancestor-symlink defense: re-run the deny check on the physically resolved
+  # ancestor (cd -P). A link like ~/rootlink -> / would otherwise smuggle
+  # "~/rootlink/System" past the string checks. Walk up from the immediate
+  # parent to the nearest EXISTING ancestor before resolving: a path component
+  # that does not exist yet (e.g. an orphaned container nobody created) cannot
+  # hide a symlink, so it must not trip fail-closed on its own. A genuinely
+  # unresolvable existing ancestor (permissions, or "/" itself failing) still
+  # refuses.
+  local parent suffix phys
+  parent=$(dirname "$norm")
+  suffix=""
+  while [ "$parent" != "/" ] && [ ! -e "$parent" ] && [ ! -L "$parent" ]; do
+    suffix="/$(basename "$parent")$suffix"
+    parent=$(dirname "$parent")
+  done
+  phys=$(cd -P "$parent" 2>/dev/null && pwd -P) || return 1
+  [ "$phys" = "/" ] && phys=""   # avoid a doubled leading slash below
+  _vtp_denied "$phys$suffix/$(basename "$norm")" && return 1
+  return 0
+}
+
+# Case-insensitive membership test against the deny roots. rc 0 = denied.
+_vtp_denied () {
+  local lower home_lower r
+  lower=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  home_lower=$(printf '%s' "$HOME" | tr '[:upper:]' '[:lower:]')
+  for r in / /system /library /applications /usr /usr/local /bin /sbin /etc \
+           /var /private /opt /opt/homebrew /users /volumes /dev /tmp \
+           "$home_lower" "$home_lower/library" "$home_lower/desktop" \
+           "$home_lower/documents" "$home_lower/downloads" "$home_lower/pictures" \
+           "$home_lower/movies" "$home_lower/music" "$home_lower/.trash" \
+           "$home_lower/.ssh" "$home_lower/.aws"; do
+    [ "$lower" = "$r" ] && return 0
+  done
+  case "$lower" in
+    /applications/*.app) return 0 ;;   # installed app bundles: use an uninstaller
+    /users/*) case "${lower#/users/}" in */*) ;; *) return 0 ;; esac ;;  # any /Users/<name>
+  esac
+  return 1
+}
+
 # --- Reversible delete ----------------------------------------------------
 # Move a path to the Trash via Finder instead of rm, so the user can restore it.
 # Used for anything riskier than a pure cache (ask-tier items, app leftovers,
