@@ -34,3 +34,21 @@ write_wl () { printf '%s\n' "$@" > "$MSC_WHITELIST_FILE"; }
   [ -d "$HOME/.npm/junk" ]          # untouched
   [ ! -e "$HOME/.cache/pip" ]       # non-whitelisted still cleaned
 }
+
+@test "trailing slash on a whitelist entry still protects itself and its children" {
+  write_wl '~/.npm/'
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; load_whitelist
+    is_whitelisted '$HOME/.npm'       && echo A
+    is_whitelisted '$HOME/.npm/junk' && echo B"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'A\nB')" ]
+}
+
+@test "a whitelist file of only slash lines protects nothing and does not crash" {
+  write_wl '/' '//'
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; load_whitelist
+    is_whitelisted '$HOME/.npm' || echo unprotected
+    is_whitelisted '/'          || echo root-unprotected"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'unprotected\nroot-unprotected')" ]
+}

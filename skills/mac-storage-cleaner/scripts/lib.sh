@@ -312,6 +312,12 @@ load_whitelist () {
     # trim surrounding whitespace (bash 3.2: no extglob)
     line=$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     [ -z "$line" ] && continue
+    # strip ALL trailing slashes so "path/" and "path" match identically
+    # (Finder's copy-path and shell tab-completion both append one). An
+    # entry that is nothing but slashes (e.g. "/" or "//") has nothing left
+    # once stripped and must not become a match-everything glob.
+    while [ "${line%/}" != "$line" ]; do line="${line%/}"; done
+    [ -z "$line" ] && continue
     case "$line" in "~") line="$HOME" ;; "~/"*) line="$HOME/${line#\~/}" ;; esac
     WHITELIST+=("$line")
   done < "$MSC_WHITELIST_FILE"
