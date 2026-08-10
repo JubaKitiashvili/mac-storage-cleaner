@@ -16,16 +16,15 @@ for p in "$@"; do
     echo "  not found: $p"
     continue
   fi
-  if ! validate_target_path "$p"; then
+  sz=$(human_kb "$(size_kb "$p")")
+  rc=0; trash_path "$p" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "  trashed ($TRASH_METHOD) $sz  $p"
+    log_op "trashed($TRASH_METHOD)" "$sz" "$p"
+    moved=$((moved + 1))
+  elif [ "$rc" -eq 2 ]; then
     echo "  REFUSED (protected system/user root — never trashed by this tool): $p"
     log_op refused "-" "$p"
-    continue
-  fi
-  sz=$(human_kb "$(size_kb "$p")")
-  if trash_path "$p"; then
-    echo "  trashed $sz  $p"
-    log_op trashed "$sz" "$p"
-    moved=$((moved + 1))
   else
     echo "  could NOT trash (permissions/TCC?): $p"
     log_op trash-failed "$sz" "$p"

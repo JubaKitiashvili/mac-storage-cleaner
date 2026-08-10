@@ -199,22 +199,44 @@ _vtp_denied () {
 }
 
 # --- Reversible delete ----------------------------------------------------
-# Move a path to the Trash via Finder instead of rm, so the user can restore it.
-# Used for anything riskier than a pure cache (ask-tier items, app leftovers,
-# big files). Returns non-zero if it could not be trashed.
-# NOTE: trashed items still occupy disk until the Trash is emptied — for pure
-# caches we prefer a direct rm (see clean-safe.sh) so space is freed immediately.
+# Move a path to the Trash (restorable) — never rm. Three-stage chain (mole's
+# order): /usr/bin/trash by ABSOLUTE path (ships with macOS 14+, headless-safe,
+# immune to PATH shadowing) -> Finder AppleScript (argv-passed, injection-safe)
+# -> same-volume mv into ~/.Trash (loses "Put Back", still restorable by hand).
+# rc 0 = moved (TRASH_METHOD set), rc 1 = could not move, rc 2 = refused.
+# NOTE: trashed items occupy disk until the Trash is emptied — pure caches use
+# direct rm in clean-safe.sh instead, so their space frees immediately.
+TRASH_METHOD=""
 trash_path () {
   local p="$1"
-  [ -e "$p" ] || return 0
-  # Pass the path as an argv value, NOT interpolated into the script text — a
-  # filename containing " or \ would otherwise break (or, pathologically, inject)
-  # the AppleScript. argv is data, so any legal filename trashes correctly.
-  osascript - "$p" >/dev/null 2>&1 <<'APPLESCRIPT'
+  # Validate BEFORE the existence check: a protected root must be refused
+  # (rc 2) even if it happens not to exist in the caller's context (e.g. a
+  # symlink race, or a test fixture that never materializes it) — refusal is
+  # a property of the path, not of whether something currently lives there.
+  validate_target_path "$p" || return 2
+  { [ -e "$p" ] || [ -L "$p" ]; } || return 0
+  local bin="${MSC_TRASH_BIN:-/usr/bin/trash}"
+  if [ -x "$bin" ] && "$bin" "$p" >/dev/null 2>&1; then
+    TRASH_METHOD="trash-cli"; return 0
+  fi
+  if osascript - "$p" >/dev/null 2>&1 <<'APPLESCRIPT'
 on run argv
   tell application "Finder" to delete (POSIX file (item 1 of argv) as alias)
 end run
 APPLESCRIPT
+  then TRASH_METHOD="finder"; return 0; fi
+  # Last resort. Same-device only: a cross-volume mv degrades into copy+delete
+  # and can leave the only copy split across volumes on failure (mole's rule).
+  local pdev tdev base dest i
+  pdev=$(stat -f %d "$p" 2>/dev/null); tdev=$(stat -f %d "$HOME/.Trash" 2>/dev/null)
+  [ -n "$pdev" ] && [ "$pdev" = "$tdev" ] || return 1
+  base=$(basename "$p"); dest="$HOME/.Trash/$base"; i=2
+  while [ -e "$dest" ] || [ -L "$dest" ]; do
+    dest="$HOME/.Trash/$base $i"; i=$((i + 1))
+    [ "$i" -gt 100 ] && return 1     # never overwrite an existing Trash item
+  done
+  mv "$p" "$dest" 2>/dev/null || return 1
+  TRASH_METHOD="mv"
 }
 
 # --- Installed apps -> bundle identifiers ---------------------------------
