@@ -8,9 +8,15 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/lib.sh"
 load_whitelist
 
+DRY=0
+[ "${1:-}" = "--dry-run" ] && DRY=1
+[ "${MSC_DRY_RUN:-0}" = "1" ] && DRY=1
+export MSC_DRY_RUN="$DRY"
+[ "$DRY" = 1 ] && echo "=== DRY RUN — nothing will be deleted ==="
+
 total_kb=0
 skipped=0
-log_writable || echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — cleanup will proceed, but this run will NOT be recorded."
+[ "$DRY" = 1 ] || log_writable || echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — cleanup will proceed, but this run will NOT be recorded."
 echo "Clearing safe caches (pure caches only)..."
 collect "${SAFE_PATHS[@]}"
 # bash 3.2 (macOS default) throws "unbound variable" on "${FOUND[@]}" when the
@@ -24,6 +30,11 @@ collect "${SAFE_PATHS[@]}"
     continue
   fi
   kb=$(size_kb "$p")
+  if [ "$DRY" = 1 ]; then
+    echo "  would remove $(human_kb "${kb:-0}")  $p"
+    total_kb=$((total_kb + ${kb:-0}))
+    continue
+  fi
   if ! rm -rf "$p" 2>/dev/null; then
     chmod -R u+w "$p" 2>/dev/null   # read-only files (e.g. Go/SwiftPM caches)
     rm -rf "$p" 2>/dev/null
@@ -42,11 +53,15 @@ done
 # Tool-native cleanups that are unambiguously safe (freed space is separate from
 # the rm total above; both are logged for the audit trail).
 if command -v brew >/dev/null 2>&1; then
-  echo "  brew cleanup (brew cleanup -s --prune=all)..."
-  if brew cleanup -s --prune=all >/dev/null 2>&1; then
-    echo "  done: brew cleanup"; log_op cleaned "brew cache" "brew cleanup -s --prune=all"
+  if [ "$DRY" = 1 ]; then
+    echo "  would run: brew cleanup -s --prune=all"
   else
-    echo "  (brew cleanup didn't complete — skipped)"
+    echo "  brew cleanup (brew cleanup -s --prune=all)..."
+    if brew cleanup -s --prune=all >/dev/null 2>&1; then
+      echo "  done: brew cleanup"; log_op cleaned "brew cache" "brew cleanup -s --prune=all"
+    else
+      echo "  (brew cleanup didn't complete — skipped)"
+    fi
   fi
 fi
 # Gate simctl on a REAL developer install. /usr/bin/xcrun is a stub present on
@@ -55,15 +70,23 @@ fi
 # ambush a non-developer just trying to free space. xcode-select -p only succeeds
 # when a toolchain is actually selected.
 if xcode-select -p >/dev/null 2>&1 && command -v xcrun >/dev/null 2>&1; then
-  if xcrun simctl delete unavailable >/dev/null 2>&1; then
-    echo "  done: removed unavailable simulators"; log_op cleaned "unavailable simulators" "simctl delete unavailable"
+  if [ "$DRY" = 1 ]; then
+    echo "  would run: xcrun simctl delete unavailable"
   else
-    echo "  (no unavailable simulators to remove, or simctl unavailable)"
+    if xcrun simctl delete unavailable >/dev/null 2>&1; then
+      echo "  done: removed unavailable simulators"; log_op cleaned "unavailable simulators" "simctl delete unavailable"
+    else
+      echo "  (no unavailable simulators to remove, or simctl unavailable)"
+    fi
   fi
 fi
 
 echo
-echo "Approx. reclaimed from cache deletions: $(human_kb "$total_kb") (brew/simulator cleanup above frees more, not counted here)"
+if [ "$DRY" = 1 ]; then
+  echo "Would reclaim from cache deletions: $(human_kb "$total_kb") — run without --dry-run to apply."
+else
+  echo "Approx. reclaimed from cache deletions: $(human_kb "$total_kb") (brew/simulator cleanup above frees more, not counted here)"
+fi
 [ "$skipped" -gt 0 ] && echo "($skipped path(s) skipped — delete via Finder if you need them gone.)"
 echo
 echo "Free space now:"
