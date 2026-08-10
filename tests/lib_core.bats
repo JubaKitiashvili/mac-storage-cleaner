@@ -7,7 +7,21 @@ teardown () { teardown_fake_home; }
 @test "lib.sh sources cleanly under set -u with a bare fake HOME" {
   run bash -c "set -u; . '$SCRIPTS/lib.sh'; echo OK"
   [ "$status" -eq 0 ]
-  [[ "$output" == *OK* ]]
+  [[ "$output" == *OK* ]] || false
+}
+
+@test "the suite's bash override (test_helper.bash) pins script invocations to /bin/bash (I3)" {
+  # Don't hardcode "3.2" — that would break the day this machine's /bin/bash
+  # changes. Instead confirm the override actually reaches the real binary:
+  # a version string from `bash -c` (our function override) must match a
+  # version string from invoking /bin/bash directly. If a PATH-shadowed bash
+  # were being used instead, BASH_VERSION would differ (or the two calls
+  # would otherwise diverge) and this assertion would catch it.
+  run bash -c 'echo "$BASH_VERSION"'
+  [ "$status" -eq 0 ]
+  real="$(/bin/bash -c 'echo "$BASH_VERSION"')"
+  [ -n "$real" ]
+  [ "$output" = "$real" ] || false
 }
 
 @test "collect returns empty FOUND on a machine with no caches" {
@@ -44,6 +58,29 @@ teardown () { teardown_fake_home; }
   done < "$BATS_TEST_DIRNAME/fixtures/dangerous_paths.txt"
 }
 
+@test "trailing slash on \$HOME does not disable home-relative deny rules (C1)" {
+  # A $HOME with a trailing slash (some login-shell/launchd setups export one)
+  # must not turn every "$home_lower/..." deny entry into a doubled-slash
+  # string that never matches. Set HOME *inside* the sourced-lib bash -c
+  # invocation (plain assignment, not `env`) so it's visible to lib.sh in the
+  # same process without depending on export/subshell propagation quirks.
+  local ts="${HOME}/"
+  for p in "$HOME" "$HOME/Documents" "$HOME/.ssh"; do
+    run bash -c "HOME='$ts'; set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$p"
+    [ "$status" -ne 0 ] || { echo "ACCEPTED dangerous path under trailing-slash HOME: $p"; false; }
+  done
+}
+
+@test "dangerous-path corpus still refused under trailing-slash \$HOME (C1 property test)" {
+  local ts="${HOME}/"
+  while IFS= read -r line; do
+    case "$line" in ''|'#'*) continue ;; esac
+    line="${line//__HOME__/$HOME}"
+    run bash -c "HOME='$ts'; set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$line"
+    [ "$status" -ne 0 ] || { echo "ACCEPTED dangerous path (trailing-slash HOME): $line"; false; }
+  done < "$BATS_TEST_DIRNAME/fixtures/dangerous_paths.txt"
+}
+
 @test "validate_target_path refuses control characters and empty" {
   run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path ''"
   [ "$status" -ne 0 ]
@@ -69,7 +106,7 @@ teardown () { teardown_fake_home; }
 
 @test "trash-items.sh refuses a protected path and logs it" {
   run bash "$SCRIPTS/trash-items.sh" "$HOME/Library"
-  [[ "$output" == *"REFUSED"* ]]
+  [[ "$output" == *"REFUSED"* ]] || false
   grep -q "refused" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }
 

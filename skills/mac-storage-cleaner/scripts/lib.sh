@@ -56,10 +56,23 @@ KEEP_N_PATHS=(
 # Print child NAMES of <dir> beyond the <n> most recently modified, one per
 # line (they are the deletion candidates). ls -1t = newest first; version dirs
 # ("17.5 (21F79)") contain spaces but never newlines.
+# Candidates must be DIRECTORIES: a stray file (e.g. a newest-mtime .DS_Store)
+# would otherwise consume one of the N "keep" slots and either get force-kept
+# ahead of a real version dir or, worse, be counted toward NR without ever
+# being a legitimate deletion target. Filter to dirs BEFORE counting N, not
+# after, so the N kept slots always land on real version dirs.
 keep_newest_n_children () {
-  local dir="$1" n="$2"
+  local dir="$1" n="$2" child i
   [ -d "$dir" ] || return 0
-  ls -1t "$dir" 2>/dev/null | awk -v n="$n" 'NR > n'
+  i=0
+  while IFS= read -r child; do
+    [ -n "$child" ] || continue
+    [ -d "$dir/$child" ] || continue
+    i=$((i + 1))
+    [ "$i" -gt "$n" ] && printf '%s\n' "$child"
+  done <<EOF
+$(ls -1t "$dir" 2>/dev/null)
+EOF
 }
 
 # --- ASK tier -------------------------------------------------------------
@@ -187,6 +200,13 @@ _vtp_denied () {
   local lower home_lower r
   lower=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
   home_lower=$(printf '%s' "$HOME" | tr '[:upper:]' '[:lower:]')
+  # Strip ALL trailing slashes (bash 3.2 loop, mirrors load_whitelist below):
+  # a $HOME with a trailing slash (some launchd/login-shell setups export one)
+  # would otherwise make every "$home_lower/..." deny entry carry a doubled
+  # slash ("...//library") that never string-matches $lower, silently
+  # disabling every home-relative deny rule while the /users/<name> carve-out
+  # in the case statement below still grants access underneath it.
+  while [ "${home_lower%/}" != "$home_lower" ]; do home_lower="${home_lower%/}"; done
   for r in / /system /library /applications /usr /usr/local /bin /sbin /etc \
            /var /private /opt /opt/homebrew /users /volumes /dev /tmp \
            "$home_lower" "$home_lower/library" "$home_lower/desktop" \

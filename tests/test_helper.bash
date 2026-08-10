@@ -3,6 +3,18 @@
 
 SCRIPTS="$BATS_TEST_DIRNAME/../skills/mac-storage-cleaner/scripts"
 
+# I3: pin every `bash <script>` / `bash -c "..."` invocation in this suite to
+# /bin/bash (macOS's shipped bash 3.2), regardless of what "bash" resolves to
+# on $PATH. This suite specifically exists to catch bash-3.2 compatibility
+# regressions (unbound-variable guards under `set -u`, no associative arrays,
+# `[[ ]]` errexit quirks, ...); a Homebrew-installed bash 4/5 sitting ahead of
+# /bin/bash on PATH would silently execute the scripts under a shell that
+# doesn't reproduce that surface at all. `export -f` (supported since bash
+# 3.2) so the override also reaches `run bash -c "..."` invocations, which
+# spawn their own bash process rather than running inline.
+bash () { /bin/bash "$@"; }
+export -f bash
+
 setup_fake_home () {
   FAKE_HOME="$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc-home.XXXXXX")"
   export HOME="$FAKE_HOME"

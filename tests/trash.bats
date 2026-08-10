@@ -13,7 +13,7 @@ EOF
   chmod +x "$HOME/fake-trash"
   run bash -c "set -u; . '$SCRIPTS/lib.sh'; MSC_TRASH_BIN='$HOME/fake-trash' trash_path '$HOME/target-dir' && echo method=\$TRASH_METHOD"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"method=trash-cli"* ]]
+  [[ "$output" == *"method=trash-cli"* ]] || false
   [ -d "$HOME/.Trash/target-dir" ]
 }
 
@@ -22,7 +22,7 @@ EOF
   make_stub osascript 1
   run bash -c "set -u; . '$SCRIPTS/lib.sh'; MSC_TRASH_BIN=/nonexistent trash_path '$HOME/fallback-dir' && echo method=\$TRASH_METHOD"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"method=mv"* ]]
+  [[ "$output" == *"method=mv"* ]] || false
   [ ! -e "$HOME/fallback-dir" ]
   [ -d "$HOME/.Trash/fallback-dir" ]
 }
@@ -40,4 +40,23 @@ EOF
   make_stub osascript 1
   run bash -c "set -u; . '$SCRIPTS/lib.sh'; MSC_TRASH_BIN=/nonexistent trash_path '$HOME/Library'"
   [ "$status" -eq 2 ]
+}
+
+@test "MSC_DRY_RUN=1 previews trash-items.sh: item survives, no log file (C2)" {
+  mkdir -p "$HOME/Downloads/old-stuff"
+  MSC_DRY_RUN=1 run bash "$SCRIPTS/trash-items.sh" "$HOME/Downloads/old-stuff"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DRY RUN"* ]] || false
+  [[ "$output" == *"would trash"*"old-stuff"* ]] || false
+  [ -d "$HOME/Downloads/old-stuff" ]
+  [ ! -e "$HOME/Library/Logs/mac-storage-cleaner/operations.log" ]
+}
+
+@test "trash-items.sh real mode still trashes and logs (C2 regression, keep green)" {
+  mkdir -p "$HOME/Downloads/old-stuff"
+  run bash "$SCRIPTS/trash-items.sh" "$HOME/Downloads/old-stuff"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"trashed"*"old-stuff"* ]] || false
+  [ ! -e "$HOME/Downloads/old-stuff" ]
+  grep -q "trashed" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }

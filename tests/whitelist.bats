@@ -30,7 +30,7 @@ write_wl () { printf '%s\n' "$@" > "$MSC_WHITELIST_FILE"; }
   make_stub brew 1; make_stub xcode-select 1
   run bash "$SCRIPTS/clean-safe.sh"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"skipped (whitelisted): $HOME/.npm"* ]]
+  [[ "$output" == *"skipped (whitelisted): $HOME/.npm"* ]] || false
   [ -d "$HOME/.npm/junk" ]          # untouched
   [ ! -e "$HOME/.cache/pip" ]       # non-whitelisted still cleaned
 }

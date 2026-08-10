@@ -9,7 +9,18 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 
 [ "$#" -eq 0 ] && { echo "usage: trash-items.sh <path> [<path> ...]"; exit 1; }
 
-log_writable || echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — items will still be trashed, but this run will NOT be recorded."
+# MSC_DRY_RUN=1 is a REAL preview here, not just a log_op no-op: without this,
+# a caller that exports MSC_DRY_RUN=1 (e.g. following clean-safe.sh's
+# convention) would still get every path actually moved to the Trash — log_op
+# would silently no-op, so the run wouldn't even be audited. Ordering matches
+# clean-safe.sh's contract: nothing is validated/scanned differently, only the
+# final trash_path call (and its log entry) is skipped.
+DRY=0
+[ "${MSC_DRY_RUN:-0}" = "1" ] && DRY=1
+export MSC_DRY_RUN="$DRY"
+[ "$DRY" = 1 ] && echo "=== DRY RUN — nothing will be trashed ==="
+
+[ "$DRY" = 1 ] || log_writable || echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — items will still be trashed, but this run will NOT be recorded."
 moved=0
 for p in "$@"; do
   if [ ! -e "$p" ] && [ ! -L "$p" ]; then
@@ -27,11 +38,22 @@ for p in "$@"; do
     continue
   fi
   sz=$(human_kb "$(size_kb "$p")")
+  if [ "$DRY" = 1 ]; then
+    echo "  would trash $sz  $p"
+    continue
+  fi
   rc=0; trash_path "$p" || rc=$?
   if [ "$rc" -eq 0 ]; then
-    echo "  trashed ($TRASH_METHOD) $sz  $p"
-    log_op "trashed($TRASH_METHOD)" "$sz" "$p"
-    moved=$((moved + 1))
+    if [ -n "$TRASH_METHOD" ]; then
+      echo "  trashed ($TRASH_METHOD) $sz  $p"
+      log_op "trashed($TRASH_METHOD)" "$sz" "$p"
+      moved=$((moved + 1))
+    else
+      # rc 0 with an EMPTY TRASH_METHOD means trash_path found nothing to
+      # move (already gone) — reporting "trashed" here would be a lie about
+      # what actually happened.
+      echo "  already gone: $p"
+    fi
   elif [ "$rc" -eq 2 ]; then
     echo "  REFUSED (protected system/user root — never trashed by this tool): $p"
     log_op refused "-" "$p"
@@ -42,6 +64,10 @@ for p in "$@"; do
 done
 
 echo
-echo "$moved item(s) moved to Trash — restorable until you empty it."
-echo "Space is reclaimed when the Trash is emptied (Finder > Empty Trash)."
+if [ "$DRY" = 1 ]; then
+  echo "Preview only — nothing was trashed. Re-run without MSC_DRY_RUN=1 to actually trash these items."
+else
+  echo "$moved item(s) moved to Trash — restorable until you empty it."
+  echo "Space is reclaimed when the Trash is emptied (Finder > Empty Trash)."
+fi
 echo "Log: $LOG_DIR/operations.log"

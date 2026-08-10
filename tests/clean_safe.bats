@@ -8,9 +8,9 @@ teardown () { teardown_fake_home; }
   mkdir -p "$HOME/.npm/junk" "$HOME/.gradle/caches/junk"
   run bash "$SCRIPTS/clean-safe.sh" --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"DRY RUN"* ]]
-  [[ "$output" == *"would remove"*".npm"* ]]
-  [[ "$output" == *"would remove"*".gradle/caches"* ]]
+  [[ "$output" == *"DRY RUN"* ]] || false
+  [[ "$output" == *"would remove"*".npm"* ]] || false
+  [[ "$output" == *"would remove"*".gradle/caches"* ]] || false
   [ -d "$HOME/.npm/junk" ]
   [ -d "$HOME/.gradle/caches/junk" ]
   [ ! -e "$HOME/Library/Logs/mac-storage-cleaner/operations.log" ]
@@ -20,7 +20,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$HOME/.npm/junk"
   printf '~/.npm\n' > "$MSC_WHITELIST_FILE"
   run bash "$SCRIPTS/clean-safe.sh" --dry-run
-  [[ "$output" == *"skipped (whitelisted): $HOME/.npm"* ]]
+  [[ "$output" == *"skipped (whitelisted): $HOME/.npm"* ]] || false
   [[ "$output" != *"would remove"*".npm"* ]]
 }
 
@@ -36,7 +36,7 @@ teardown () { teardown_fake_home; }
   make_stub pgrep 0            # every probe reports "running"
   run bash "$SCRIPTS/clean-safe.sh"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"skipped (in use"*".gradle/caches"* ]]
+  [[ "$output" == *"skipped (in use"*".gradle/caches"* ]] || false
   [ -d "$HOME/.gradle/caches/junk" ]
 }
 
@@ -44,7 +44,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$HOME/Library/Developer/Xcode/DerivedData/junk"
   make_stub pgrep 2            # rc 2 = probe error, not "no match"
   run bash "$SCRIPTS/clean-safe.sh"
-  [[ "$output" == *"skipped (process state unknown"*"DerivedData"* ]]
+  [[ "$output" == *"skipped (process state unknown"*"DerivedData"* ]] || false
   [ -d "$HOME/Library/Developer/Xcode/DerivedData/junk" ]
 }
 
@@ -59,8 +59,16 @@ teardown () { teardown_fake_home; }
   mkdir -p "$HOME/.gradle/caches/junk"
   make_stub pgrep 0
   run bash "$SCRIPTS/clean-safe.sh" --dry-run
-  [[ "$output" == *"skipped (in use"* ]]
+  [[ "$output" == *"skipped (in use"* ]] || false
   [[ "$output" != *"would remove"*".gradle/caches"* ]]
+}
+
+@test "unknown argument fails closed (exit 2), no deletion (I4)" {
+  mkdir -p "$HOME/.npm/junk"
+  run bash "$SCRIPTS/clean-safe.sh" --dryrun
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unknown argument"* ]] || false
+  [ -d "$HOME/.npm/junk" ]
 }
 
 @test "composer and gem caches are cleared" {
@@ -101,6 +109,17 @@ teardown () { teardown_fake_home; }
   [[ "$output" == *"skipped (protected or in use): $PB/stuck-item"* ]] || false
   [ -d "$PB/stuck-item" ]
   grep -q "skipped" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+}
+
+@test "whitelisting one Handoff pasteboard item protects it while others still clear (I5)" {
+  PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
+  mkdir -p "$PB/old-item" "$PB/other-old-item"
+  touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/old-item" "$PB/other-old-item"
+  printf '%s\n' "$PB/old-item" > "$MSC_WHITELIST_FILE"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [[ "$output" == *"skipped (whitelisted): $PB/old-item"* ]] || false
+  [ -d "$PB/old-item" ]
+  [ ! -e "$PB/other-old-item" ]
 }
 
 @test "conda cleanup runs the owner command, never rm" {

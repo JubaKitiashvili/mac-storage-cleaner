@@ -8,6 +8,11 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/lib.sh"
 load_whitelist
 
+# Reject anything other than --dry-run outright: an unrecognized flag (typo,
+# stale docs, a future option someone half-wires up) must never fail OPEN into
+# a real deletion run just because it doesn't match the "--dry-run" check below.
+[ $# -gt 0 ] && [ "$1" != "--dry-run" ] && { echo "unknown argument: $1 (only --dry-run is supported)"; exit 2; }
+
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 [ "${MSC_DRY_RUN:-0}" = "1" ] && DRY=1
@@ -74,6 +79,9 @@ for base in "${KEEP_N_PATHS[@]}"; do
     [ -n "$child" ] || continue
     p="$base/$child"
     [ -e "$p" ] || continue
+    if is_whitelisted "$p"; then
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     kb=$(size_kb "$p")
     if [ "$DRY" = 1 ]; then
       echo "  would remove $(human_kb "${kb:-0}")  $p"
@@ -108,10 +116,14 @@ for spec in "${AI_AGENT_SPECS[@]}"; do
   kept_others=0
   while IFS= read -r child; do
     [ -n "$child" ] || continue
+    [ -d "$root/$child" ] || continue   # stray files (e.g. .DS_Store) are never version dirs — ignore entirely
     [ "$child" = "$active" ] && continue
     if [ "$kept_others" -lt "$AIKEEP" ]; then kept_others=$((kept_others+1)); continue; fi
     p="$root/$child"
     [ -e "$p" ] || continue
+    if is_whitelisted "$p"; then
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     kb=$(size_kb "$p")
     if [ "$DRY" = 1 ]; then
       echo "  would remove $(human_kb "${kb:-0}")  $p ($label old version)"
@@ -138,6 +150,9 @@ if [ -d "$PB" ] && [ ! -L "$PB" ] && ! is_whitelisted "$PB"; then
     [ -n "$p" ] || continue
     [ -e "$p" ] || continue
     [ -L "$p" ] && continue
+    if is_whitelisted "$p"; then
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     kb=$(size_kb "$p")
     if [ "$DRY" = 1 ]; then
       echo "  would remove $(human_kb "${kb:-0}")  $p (Handoff clipboard buffer)"

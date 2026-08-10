@@ -81,7 +81,12 @@ app folder. Exact paths: `references/cache-catalog.md`.
 `~/.config/mac-storage-cleaner/whitelist` — one path or glob per line, `#`
 comments, `~/` expansion; protects the entry and everything under it, and
 governs every tier `clean-safe.sh` touches (safe, keep-N, AI-agent, Handoff),
-dry-run included — surfaced by the survey too. `find-extras.sh` and
+dry-run included, down to individual children inside a keep-N/AI-agent/Handoff
+base directory — surfaced by the survey too. One limit: an entry BELOW a
+**safe-tier** allowlist path (e.g. `~/.npm/some-package`) can't be honored,
+because the safe tier removes those paths atomically (`rm -rf ~/.npm`) rather
+than walking their children — whitelist the safe-tier path itself instead.
+`find-extras.sh` and
 `trash-items.sh` do **not** read it (they only ever act on paths the user
 explicitly approves that session), so when the user says "always keep X", add
 a line here **and** keep checking find-extras candidates against it yourself
