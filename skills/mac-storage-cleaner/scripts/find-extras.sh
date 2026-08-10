@@ -50,6 +50,30 @@ for d in "$HOME/Library/Containers/"*; do
 done | sort -rh | head -5
 echo
 
+echo "===== Browser old-version frameworks (quit the browser, keep Current) ====="
+echo "Chromium browsers leave whole previous versions inside the .app bundle."
+echo "Safe to Trash every version EXCEPT the one 'Current' points to. Report-only:"
+for fw in \
+  "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions" \
+  "/Applications/Microsoft Edge.app/Contents/Frameworks/Microsoft Edge Framework.framework/Versions" \
+  "/Applications/Brave Browser.app/Contents/Frameworks/Brave Browser Framework.framework/Versions"; do
+  [ -d "$fw" ] || continue
+  cur=$(readlink "$fw/Current" 2>/dev/null)
+  cur=$(basename "${cur:-none}")
+  for v in "$fw"/*; do
+    [ -d "$v" ] || continue
+    name=$(basename "$v")
+    [ "$name" = "Current" ] && continue
+    if [ "$name" = "$cur" ]; then
+      printf '  %s\t%s   (Current — KEEP)\n' "$(human_kb "$(size_kb "$v")")" "$v"
+    else
+      printf '  %s\t%s\n' "$(human_kb "$(size_kb "$v")")" "$v"
+    fi
+  done
+done
+echo "  (if empty: no multi-version browser frameworks found)"
+echo
+
 echo "===== Stale installers (.dmg/.pkg/.iso in Downloads & Desktop) ====="
 find "$HOME/Downloads" "$HOME/Desktop" -maxdepth 2 -type f \
   \( -iname '*.dmg' -o -iname '*.pkg' -o -iname '*.iso' -o -iname '*.msi' \) 2>/dev/null \

@@ -62,3 +62,34 @@ teardown () { teardown_fake_home; }
   [[ "$output" == *"skipped (in use"* ]]
   [[ "$output" != *"would remove"*".gradle/caches"* ]]
 }
+
+@test "composer and gem caches are cleared" {
+  mkdir -p "$HOME/Library/Caches/composer/files" "$HOME/.composer/cache/repo" \
+           "$HOME/.gem/ruby/3.3.0/cache"
+  touch "$HOME/.gem/ruby/3.3.0/cache/foo-1.0.gem"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ ! -e "$HOME/Library/Caches/composer" ]
+  [ ! -e "$HOME/.composer/cache" ]
+  [ ! -e "$HOME/.gem/ruby/3.3.0/cache" ]
+}
+
+@test "Handoff pasteboard: only items older than 60 minutes go" {
+  PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
+  mkdir -p "$PB/old-item" "$PB/fresh-item"
+  touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/old-item"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ ! -e "$PB/old-item" ]
+  [ -d "$PB/fresh-item" ]
+}
+
+@test "conda cleanup runs the owner command, never rm" {
+  make_stub conda 0
+  mkdir -p "$HOME/miniconda3/pkgs/somepkg"
+  run bash "$SCRIPTS/clean-safe.sh"
+  # bash 3.2: a bare `[[ ]]` failure does not trigger errexit unless it is the
+  # final statement, so `|| false` forces the failure to actually abort the
+  # test (otherwise the trailing `[ -d ]` below — true regardless of whether
+  # conda ever ran — would mask a missing "conda clean" in $output).
+  [[ "$output" == *"conda clean"* ]] || false
+  [ -d "$HOME/miniconda3/pkgs/somepkg" ]   # rm never touches pkgs
+}

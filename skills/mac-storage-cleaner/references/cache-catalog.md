@@ -35,8 +35,11 @@ license file, an unpushable archive, or someone's only local backup is not.
 | `~/Library/Caches/{node-gyp,typescript,electron,electron-builder}` | tool download/build caches | `rm -rf` | next use |
 | `~/.cache/uv`, `~/Library/Caches/uv` | uv wheel/source cache | `uv cache clean` or `rm -rf` | next `uv` |
 | `~/.cache/pip`, `~/Library/Caches/pip` | pip wheel cache | `pip cache purge` or `rm -rf` | next `pip install` |
+| `~/Library/Caches/composer`, `~/.composer/cache` | Composer (PHP) download cache | `rm -rf` | Composer re-downloads packages on next `install`/`update` |
+| `~/.gem/ruby/*/cache` | downloaded `.gem` archives | `rm -rf` | next `gem install`/`bundle install` — installed gems live in `gems/` alongside, untouched |
 | `~/Library/Caches/go-build` | Go compile cache | `go clean -cache` or `rm -rf` | next `go build` |
 | `~/Library/Caches/Homebrew` + downloads | brew bottle/download cache | `brew cleanup -s --prune=all` | next `brew install` |
+| `~/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard` | Handoff / Universal Clipboard transfer buffers; `useractivityd` is supposed to prune these itself but can leave many GB behind (mole #1178) | `rm -rf` **only items older than 60 minutes** (age-gated — an in-flight Universal Clipboard sync must never be cut) | automatically as new Handoff transfers occur |
 | `/private/tmp/{metro-*,haste-map-*,react-*}` | Metro/RN temp | `rm -rf` | next Metro start |
 | `~/Library/Caches/<app>` (generic, NOT on the list above) | most per-app caches | prefer `trash-items.sh` (reversible); `rm -rf` only once you've confirmed it's a pure cache | usually automatic — but some apps keep the only local copy of downloaded content or a token here, so verify before deleting |
 
@@ -59,6 +62,8 @@ cache *subfolders* — never the whole app-support folder, which holds real data
 | `~/Library/Containers/com.docker.docker` (`Docker.raw`) | VM disk with images/volumes — not a cache | Start Docker, run `docker system prune -a` (and `docker volume prune`). Never `rm` the .raw. |
 | `~/.cache/huggingface`, `~/.ollama/models`, `~/.cache/torch`, `~/.lmstudio` | multi-GB model re-downloads | Confirm; if duplicate variants of one model exist (e.g. whisper in faster-whisper + MLX + turbo), point it out and delete the unused ones. |
 | `~/Library/Developer/CoreSimulator/Devices` | simulator state + installed apps | `xcrun simctl delete unavailable` is safe (orphans only). Deleting active devices wipes their state — ask. |
+| `~/miniconda3/pkgs`, `~/anaconda3/pkgs`, `~/opt/*conda*/pkgs` (or wherever conda is installed) | package cache is hardlinked into every live conda env — raw `rm` on `pkgs/` breaks them | **owner command only:** `conda clean -y --tarballs --index-cache --logfiles`. Never `rm` inside `pkgs/`. |
+| Browser old-version framework folders inside `.app` bundles (Chrome/Edge/Brave `Contents/Frameworks/*/Versions/<old-version>`) | lives inside a `.app` bundle — TCC App Management can block deletion, and the browser must be quit first | **report-only** (`find-extras.sh` lists every version except the one `Current` points to); user picks, `trash-items.sh` removes; if TCC blocks it, use Finder |
 | `~/Library/Developer/Xcode/Archives` | contains dSYMs + shippable builds | **Warn:** deleting loses crash symbolication and re-upload ability. Ask. |
 | `~/Library/pnpm/store`, `~/.pnpm-store` | content store all projects hardlink from | `pnpm store prune` removes only unreferenced; safer than `rm -rf`. |
 | `~/go/pkg/mod` | module cache, files are read-only | `go clean -modcache` (plain `rm -rf` fails on perms). Re-downloads. |

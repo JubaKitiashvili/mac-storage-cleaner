@@ -129,6 +129,30 @@ $(ls -1t "$root" 2>/dev/null)
 EOF
 done
 
+# Handoff / Universal Clipboard staging: useractivityd is supposed to prune
+# these transfer buffers itself but can leave many GB behind (mole #1178).
+# Only items UNTOUCHED FOR 60+ MINUTES go — never cut an in-flight sync.
+PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
+if [ -d "$PB" ] && [ ! -L "$PB" ] && ! is_whitelisted "$PB"; then
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    [ -e "$p" ] || continue
+    [ -L "$p" ] && continue
+    kb=$(size_kb "$p")
+    if [ "$DRY" = 1 ]; then
+      echo "  would remove $(human_kb "${kb:-0}")  $p (Handoff clipboard buffer)"
+      total_kb=$((total_kb + ${kb:-0})); continue
+    fi
+    rm -rf "$p" 2>/dev/null
+    if [ ! -e "$p" ]; then
+      echo "  removed $(human_kb "${kb:-0}")  $p (Handoff clipboard buffer)"
+      log_op removed "$(human_kb "${kb:-0}")" "$p"; total_kb=$((total_kb + ${kb:-0}))
+    fi
+  done <<EOF
+$(find "$PB" -mindepth 1 -maxdepth 1 -mmin +60 2>/dev/null)
+EOF
+fi
+
 # Tool-native cleanups that are unambiguously safe (freed space is separate from
 # the rm total above; both are logged for the audit trail).
 if command -v brew >/dev/null 2>&1; then
@@ -141,6 +165,13 @@ if command -v brew >/dev/null 2>&1; then
     else
       echo "  (brew cleanup didn't complete — skipped)"
     fi
+  fi
+fi
+# conda: owner command only — pkgs/ is hardlinked into live envs, raw rm breaks them.
+if command -v conda >/dev/null 2>&1; then
+  if [ "$DRY" = 1 ]; then echo "  would run: conda clean -y --tarballs --index-cache --logfiles"
+  elif conda clean -y --tarballs --index-cache --logfiles >/dev/null 2>&1; then
+    echo "  done: conda clean"; log_op cleaned "conda caches" "conda clean -y --tarballs --index-cache --logfiles"
   fi
 fi
 # Gate simctl on a REAL developer install. /usr/bin/xcrun is a stub present on

@@ -26,6 +26,10 @@ SAFE_PATHS=(
   "$HOME/Library/Caches/uv"
   "$HOME/.cache/pip"
   "$HOME/Library/Caches/pip"
+  # PHP / Ruby
+  "$HOME/Library/Caches/composer"
+  "$HOME/.composer/cache"
+  "$HOME/.gem/ruby/*/cache"
   # JVM / Android build artifacts (see notes: caches/ only, never all of ~/.gradle)
   "$HOME/.gradle/caches"
   # Other
