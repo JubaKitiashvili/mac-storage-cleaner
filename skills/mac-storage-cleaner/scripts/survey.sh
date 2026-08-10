@@ -20,6 +20,9 @@ if [ "${#FOUND[@]}" -gt 0 ]; then
   du -sh "${FOUND[@]}" 2>/dev/null | sort -rh
   line
   du -sch "${FOUND[@]}" 2>/dev/null | tail -1 | awk '{print "reclaimable in safe tier: "$1}'
+  load_whitelist
+  [ "${#WHITELIST[@]}" -gt 0 ] && \
+    echo "  (whitelist active: ${#WHITELIST[@]} protected pattern(s) — clean-safe will skip matches; edit $MSC_WHITELIST_FILE)"
 else
   echo "  (none present)"
 fi

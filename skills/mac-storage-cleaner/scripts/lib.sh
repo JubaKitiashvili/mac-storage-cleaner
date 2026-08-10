@@ -294,3 +294,33 @@ EOF
   fi
   return 0
 }
+
+# --- User whitelist -------------------------------------------------------
+# Optional user-owned protection list: one path or glob per line, '#' comments,
+# leading ~/ expands to $HOME. An entry protects itself and everything under it.
+# clean-safe.sh consults this before every deletion, so a user who wants e.g.
+# DerivedData kept doesn't have to rely on the agent remembering (mole's
+# ~/.config/mole/whitelist, simplified).
+MSC_WHITELIST_FILE="${MSC_WHITELIST_FILE:-$HOME/.config/mac-storage-cleaner/whitelist}"
+WHITELIST=()
+load_whitelist () {
+  WHITELIST=()
+  [ -f "$MSC_WHITELIST_FILE" ] || return 0
+  local raw line
+  while IFS= read -r raw || [ -n "$raw" ]; do
+    line="${raw%%#*}"
+    # trim surrounding whitespace (bash 3.2: no extglob)
+    line=$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    [ -z "$line" ] && continue
+    case "$line" in "~") line="$HOME" ;; "~/"*) line="$HOME/${line#\~/}" ;; esac
+    WHITELIST+=("$line")
+  done < "$MSC_WHITELIST_FILE"
+}
+is_whitelisted () {   # rc 0 = protected. Entries may be globs — $e is unquoted in case.
+  local p="$1" e
+  [ "${#WHITELIST[@]}" -eq 0 ] && return 1
+  for e in "${WHITELIST[@]}"; do
+    case "$p" in $e|$e/*) return 0 ;; esac
+  done
+  return 1
+}

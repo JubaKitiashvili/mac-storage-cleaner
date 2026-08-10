@@ -6,6 +6,7 @@
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/lib.sh"
+load_whitelist
 
 total_kb=0
 skipped=0
@@ -16,6 +17,12 @@ collect "${SAFE_PATHS[@]}"
 # array is empty under `set -u` — which happens on a fresh Mac with no dev
 # caches. Guard the loop so a clean machine reports "nothing to do" instead of crashing.
 [ "${#FOUND[@]}" -gt 0 ] && for p in "${FOUND[@]}"; do
+  if is_whitelisted "$p"; then
+    echo "  skipped (whitelisted): $p"
+    log_op skipped-whitelisted "-" "$p"
+    skipped=$((skipped + 1))
+    continue
+  fi
   kb=$(size_kb "$p")
   if ! rm -rf "$p" 2>/dev/null; then
     chmod -R u+w "$p" 2>/dev/null   # read-only files (e.g. Go/SwiftPM caches)
