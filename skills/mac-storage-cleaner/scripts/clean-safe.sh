@@ -29,6 +29,12 @@ collect "${SAFE_PATHS[@]}"
     skipped=$((skipped + 1))
     continue
   fi
+  if reason=$(guard_reason_for_path "$p"); then
+    echo "  skipped ($reason): $p"
+    log_op skipped-in-use "-" "$p"
+    skipped=$((skipped + 1))
+    continue
+  fi
   kb=$(size_kb "$p")
   if [ "$DRY" = 1 ]; then
     echo "  would remove $(human_kb "${kb:-0}")  $p"

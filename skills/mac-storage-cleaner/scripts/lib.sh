@@ -331,3 +331,46 @@ is_whitelisted () {   # rc 0 = protected. Entries may be globs — $e is unquote
   done
   return 1
 }
+
+# --- Process guards (fail closed) -----------------------------------------
+# Deleting a build cache while its owner writes to it corrupts the next build
+# worse than a full cache miss. Tri-state (mole's contract): 0 = running,
+# 1 = idle, 2 = unknown — and unknown DENIES deletion: an unreadable process
+# table is not evidence the app is closed.
+guard_procs_running () {   # guard_procs_running <exact-process-name>...
+  command -v pgrep >/dev/null 2>&1 || return 2
+  local n rc
+  for n in "$@"; do
+    if pgrep -x "$n" >/dev/null 2>&1; then return 0
+    else rc=$?; [ "$rc" -eq 1 ] || return 2; fi
+  done
+  return 1
+}
+
+# Echo a skip reason (rc 0) when this safe-tier path's owner may be live.
+# rc 1 = no guard applies or owner idle. Only Xcode-family paths and the
+# Gradle daemon are guarded — npm/bun caches are content-addressed and their
+# runtimes (node) run constantly on dev machines, so guarding them would
+# permanently block cleaning (deliberate scope decision).
+guard_reason_for_path () {
+  local p="$1" st=1
+  case "$p" in
+    "$HOME/Library/Developer/Xcode/"*|"$HOME/Library/Developer/CoreSimulator/"*| \
+    "$HOME/Library/Caches/com.apple.dt.Xcode"|"$HOME/Library/Caches/org.swift.swiftpm"| \
+    "$HOME/Library/Caches/CocoaPods")
+      guard_procs_running Xcode xcodebuild Simulator swift-frontend xctest; st=$? ;;
+    "$HOME/.gradle/caches")
+      # The daemon is a java process; -x java would over-match. -f GradleDaemon
+      # matches the daemon's command line specifically.
+      if command -v pgrep >/dev/null 2>&1; then
+        if pgrep -f GradleDaemon >/dev/null 2>&1; then st=0
+        else st=$?; [ "$st" -eq 1 ] || st=2; fi
+      else st=2; fi ;;
+    *) return 1 ;;
+  esac
+  case "$st" in
+    0) printf 'in use — a guarded process is running' ; return 0 ;;
+    2) printf 'process state unknown — failing closed' ; return 0 ;;
+  esac
+  return 1
+}
