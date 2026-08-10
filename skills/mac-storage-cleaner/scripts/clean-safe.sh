@@ -56,6 +56,42 @@ collect "${SAFE_PATHS[@]}"
   fi
 done
 
+# Keep-N retention: DeviceSupport regenerates per-version on device connect, so
+# keep the newest MSC_DEVICE_SUPPORT_KEEP (default 2) and clear older versions.
+KEEPN="${MSC_DEVICE_SUPPORT_KEEP:-2}"
+case "$KEEPN" in ''|*[!0-9]*) KEEPN=2 ;; esac
+for base in "${KEEP_N_PATHS[@]}"; do
+  [ -d "$base" ] || continue
+  if is_whitelisted "$base"; then
+    echo "  skipped (whitelisted): $base"; log_op skipped-whitelisted "-" "$base"; skipped=$((skipped+1)); continue
+  fi
+  if reason=$(guard_reason_for_path "$base"); then
+    echo "  skipped ($reason): $base"; log_op skipped-in-use "-" "$base"; skipped=$((skipped+1)); continue
+  fi
+  removed_any=0
+  while IFS= read -r child; do
+    # Empty child would collapse "$base/$child" to $base itself — never delete that.
+    [ -n "$child" ] || continue
+    p="$base/$child"
+    [ -e "$p" ] || continue
+    kb=$(size_kb "$p")
+    if [ "$DRY" = 1 ]; then
+      echo "  would remove $(human_kb "${kb:-0}")  $p"
+      total_kb=$((total_kb + ${kb:-0})); removed_any=1; continue
+    fi
+    rm -rf "$p" 2>/dev/null
+    if [ -e "$p" ]; then
+      echo "  skipped (protected or in use): $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+    else
+      echo "  removed $(human_kb "${kb:-0}")  $p"; log_op removed "$(human_kb "${kb:-0}")" "$p"
+      total_kb=$((total_kb + ${kb:-0})); removed_any=1
+    fi
+  done <<EOF
+$(keep_newest_n_children "$base" "$KEEPN")
+EOF
+  [ "$removed_any" = 1 ] && echo "  (kept $KEEPN newest in $(basename "$base"))"
+done
+
 # Tool-native cleanups that are unambiguously safe (freed space is separate from
 # the rm total above; both are logged for the audit trail).
 if command -v brew >/dev/null 2>&1; then

@@ -9,9 +9,6 @@
 SAFE_PATHS=(
   # Apple / Xcode
   "$HOME/Library/Developer/Xcode/DerivedData"
-  "$HOME/Library/Developer/Xcode/iOS DeviceSupport"
-  "$HOME/Library/Developer/Xcode/watchOS DeviceSupport"
-  "$HOME/Library/Developer/Xcode/tvOS DeviceSupport"
   "$HOME/Library/Developer/CoreSimulator/Caches"
   "$HOME/Library/Caches/org.swift.swiftpm"
   "$HOME/Library/Caches/com.apple.dt.Xcode"
@@ -41,6 +38,25 @@ SAFE_PATHS=(
   "/private/tmp/react-native-packager-cache-*"
   "/private/tmp/react-packager-cache-*"
 )
+
+# --- KEEP-N tier ------------------------------------------------------------
+# Device symbol caches regenerate on the next device connect — but that costs
+# a multi-minute re-download per OS version. Keep the N newest (you still own
+# devices on those), clear the rest (mole keeps 2; same default here).
+KEEP_N_PATHS=(
+  "$HOME/Library/Developer/Xcode/iOS DeviceSupport"
+  "$HOME/Library/Developer/Xcode/watchOS DeviceSupport"
+  "$HOME/Library/Developer/Xcode/tvOS DeviceSupport"
+)
+
+# Print child NAMES of <dir> beyond the <n> most recently modified, one per
+# line (they are the deletion candidates). ls -1t = newest first; version dirs
+# ("17.5 (21F79)") contain spaces but never newlines.
+keep_newest_n_children () {
+  local dir="$1" n="$2"
+  [ -d "$dir" ] || return 0
+  ls -1t "$dir" 2>/dev/null | awk -v n="$n" 'NR > n'
+}
 
 # --- ASK tier -------------------------------------------------------------
 # Large but either not a pure cache, or expensive to restore (multi-GB

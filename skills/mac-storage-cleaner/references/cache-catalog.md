@@ -23,7 +23,7 @@ license file, an unpushable archive, or someone's only local backup is not.
 | Location | What | Reclaim | Regenerates on |
 |---|---|---|---|
 | `~/Library/Developer/Xcode/DerivedData` | Xcode build products, indexes | `rm -rf` | next Xcode / `xcodebuild` |
-| `~/Library/Developer/Xcode/{iOS,watchOS,tvOS} DeviceSupport` | symbols copied from attached devices | `rm -rf` | re-copies when a device on that OS build is re-attached (note: an OS build you no longer have a device for won't regenerate — minor, only affects symbolicating that old build) |
+| `~/Library/Developer/Xcode/{iOS,watchOS,tvOS} DeviceSupport` | symbols copied from attached devices | `rm -rf` | re-copies when a device on that OS build is re-attached (note: an OS build you no longer have a device for won't regenerate — minor, only affects symbolicating that old build). clean-safe keeps the N newest versions (`MSC_DEVICE_SUPPORT_KEEP`, default 2) so your current devices' symbols survive; older versions re-download on next connect of such a device. |
 | `~/Library/Developer/CoreSimulator/Caches` | simulator runtime caches | `rm -rf` | automatically |
 | `~/Library/Caches/com.apple.dt.Xcode` | misc Xcode cache | `rm -rf` | automatically |
 | `~/Library/Caches/org.swift.swiftpm` | SwiftPM download cache | `rm -rf` | next resolve |

@@ -26,6 +26,8 @@ if [ "${#FOUND[@]}" -gt 0 ]; then
 else
   echo "  (none present)"
 fi
+collect "${KEEP_N_PATHS[@]}"
+[ "${#FOUND[@]}" -gt 0 ] && du -sh "${FOUND[@]}" 2>/dev/null | sort -rh | sed 's/$/   (keeps 2 newest versions)/'
 echo
 
 echo "===== Other large ~/Library/Caches entries (usually safe — verify, Trash if unsure) ====="
