@@ -54,6 +54,7 @@ EOF
 
 @test "trash-items.sh real mode still trashes and logs (C2 regression, keep green)" {
   mkdir -p "$HOME/Downloads/old-stuff"
+  make_stub osascript 1
   run bash "$SCRIPTS/trash-items.sh" "$HOME/Downloads/old-stuff"
   [ "$status" -eq 0 ]
   [[ "$output" == *"trashed"*"old-stuff"* ]] || false
