@@ -399,7 +399,7 @@ resolve_active_version_dir () {
   # agent closed even on a perfectly healthy install.
   rroot=$(cd -P "$root" 2>/dev/null && pwd -P) || return 1
   case "$target" in "$rroot"/*) ;; *) return 1 ;; esac
-  local rel="${target#$rroot/}"
+  local rel="${target#"$rroot"/}"
   printf '%s' "${rel%%/*}"
 }
 
