@@ -27,7 +27,11 @@ else
   echo "  (none present)"
 fi
 collect "${KEEP_N_PATHS[@]}"
-[ "${#FOUND[@]}" -gt 0 ] && du -sh "${FOUND[@]}" 2>/dev/null | sort -rh | sed 's/$/   (keeps 2 newest versions)/'
+if [ "${#FOUND[@]}" -gt 0 ]; then
+  KEEPN="${MSC_DEVICE_SUPPORT_KEEP:-2}"
+  case "$KEEPN" in ''|*[!0-9]*) KEEPN=2 ;; esac
+  du -sh "${FOUND[@]}" 2>/dev/null | sort -rh | sed "s/\$/   (keeps $KEEPN newest versions)/"
+fi
 echo
 
 echo "===== Other large ~/Library/Caches entries (usually safe — verify, Trash if unsure) ====="

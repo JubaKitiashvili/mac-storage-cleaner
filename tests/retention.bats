@@ -40,3 +40,15 @@ mk_ds () {   # four version dirs, mtimes 4d..1d old; "18.5 (22F76)" newest
   [[ "$output" == *"would remove"*"18.5 (22F76)"* ]]
   [ -d "$DS/18.5 (22F76)" ]
 }
+
+@test "survey shows the actual MSC_DEVICE_SUPPORT_KEEP value, not a hardcoded 2 (preview == reality)" {
+  mk_ds
+  MSC_DEVICE_SUPPORT_KEEP=5 run bash "$SCRIPTS/survey.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(keeps 5 newest versions)"* ]]
+  [[ "$output" != *"(keeps 2 newest versions)"* ]]
+
+  run bash "$SCRIPTS/survey.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(keeps 2 newest versions)"* ]]
+}
