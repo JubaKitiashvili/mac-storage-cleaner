@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 load test_helper
 
-setup ()    { setup_fake_home; make_stub brew 1; make_stub xcode-select 1; }
+setup ()    { setup_fake_home; make_stub brew 1; make_stub xcode-select 1; make_stub pgrep 1; }
 teardown () { teardown_fake_home; }
 
 @test "--dry-run previews removals, deletes nothing, writes no log" {
