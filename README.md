@@ -41,7 +41,7 @@ Full tiered inventory, exact reclaim commands, and edge-case notes live in [`ski
 - **No `sudo`** into system/SIP-protected areas.
 - **Every action logged** to `~/Library/Logs/mac-storage-cleaner/operations.log` (5 MB rotation) — and the scripts *refuse to delete unlogged* unless you explicitly override.
 - **Honest accounting**: partial removals reported as partial, unmeasurable sizes as `size?` (never fake zeros), survey totals exclude whitelisted items, APFS "purgeable" space explained instead of hand-waved.
-- **68 automated tests** (bats), including a 40+-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests can never touch a real machine. Audited by an independent multi-model panel before release; bash 3.2-compatible (the version macOS ships).
+- **80 automated tests** (bats), including a 40+-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests can never touch a real machine. Audited by an independent multi-model panel before release; bash 3.2-compatible (the version macOS ships).
 
 ## Install
 
@@ -89,7 +89,7 @@ Useful knobs (all optional):
 - Three-stage reversible Trash chain with per-method audit logging and hard refusal of protected roots.
 - New coverage: Android Studio/SDK, Carthage, Poetry, mise, composer/gem/conda, Handoff clipboard buffers (60-min age gate), crash reports (30-day age gate), guarded Electron/Chromium app caches, browser old-version framework reporting.
 - Honest accounting throughout: partial-removal reporting, `size?` instead of fake zeros, whitelist-aware survey totals, refuse-to-delete-unlogged, log rotation.
-- **68-test bats suite** with a property-tested dangerous-path corpus and a fake-`$HOME` isolation harness.
+- **80-test bats suite** with a property-tested dangerous-path corpus and a fake-`$HOME` isolation harness.
 
 ## Requirements
 
