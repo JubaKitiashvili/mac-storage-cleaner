@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.3 — 2026-08-11
+
+Fix for a cubic P1 finding (PR #792).
+
+### Fixed
+- **`DiagnosticReports/Retired` is no longer swept as one `rm -rf` unit** —
+  the legacy `Retired` directory was matched by the top-level find and
+  removed recursively, bypassing every per-item protection (30-day age,
+  whitelist, `validate_target_path`) for whatever it contained: a
+  whitelisted child, or a report file modified in place (fresh mtime) while
+  the directory's own mtime stayed old. `Retired`'s direct children are now
+  walked through the exact same per-item pipeline as top-level reports;
+  only report artifacts older than 30 days are removed, and the (possibly
+  emptied) `Retired` directory itself is never deleted.
+
 ## 2.0.2 — 2026-08-11
 
 Fixes for a second round of external review findings.

@@ -230,6 +230,42 @@ teardown () { teardown_fake_home; }
   [ -d "$DR/notes" ]        # not "Retired" — survives even though old
 }
 
+@test "DiagnosticReports/Retired: old report inside is removed, the Retired dir itself survives" {
+  DR="$HOME/Library/Logs/DiagnosticReports"
+  mkdir -p "$DR/Retired"
+  touch "$DR/Retired/old.crash"
+  touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired/old.crash"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"removed"*"old.crash"*"crash report >30d"* ]] || false
+  [ ! -e "$DR/Retired/old.crash" ]
+  [ -d "$DR/Retired" ]        # the Retired dir itself is never rm -rf'd
+}
+
+@test "DiagnosticReports/Retired: a fresh report inside survives even when Retired itself is old" {
+  DR="$HOME/Library/Logs/DiagnosticReports"
+  mkdir -p "$DR/Retired"
+  touch "$DR/Retired/fresh.crash"          # mtime now
+  touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired"   # dir's own mtime is old
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [ -e "$DR/Retired/fresh.crash" ]         # child mtime, not the dir's, governs
+  [ -d "$DR/Retired" ]
+}
+
+@test "DiagnosticReports/Retired: a whitelisted child survives and is reported skipped" {
+  DR="$HOME/Library/Logs/DiagnosticReports"
+  mkdir -p "$DR/Retired"
+  touch "$DR/Retired/keep.crash"
+  touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired/keep.crash"
+  printf '%s\n' "$DR/Retired/keep.crash" > "$MSC_WHITELIST_FILE"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skipped (whitelisted): $DR/Retired/keep.crash"* ]] || false
+  [ -e "$DR/Retired/keep.crash" ]
+  [ -d "$DR/Retired" ]
+}
+
 @test "deferred-skip rollup summarizes in-use and whitelisted skips (A5)" {
   mkdir -p "$HOME/.npm/junk" "$HOME/.gradle/caches/junk"
   printf '~/.npm\n' > "$MSC_WHITELIST_FILE"
