@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Safe, transparent macOS disk-space reclamation as a Claude skill.",
-    "version": "2.0.3"
+    "version": "2.0.4"
   },
   "plugins": [
     {
       "name": "mac-storage-cleaner",
       "source": "./",
       "description": "Safely reclaim disk space on a Mac: survey usage, auto-clear only pure caches, Trash anything riskier (reversible), ask before anything expensive, log every deletion.",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "category": "productivity",
       "keywords": ["macos", "disk-space", "cache", "cleanup", "storage"]
     }

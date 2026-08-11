@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.4 — 2026-08-11
+
+Fix for a cubic P3 finding (PR #792): `_msc_remove_old_report`'s doc comment
+claimed the same "rm with the skipped/partial honesty branch" as the keep-N
+and app-cache loops, but its body only implemented a plain skip on a blocked
+`rm` — no `chmod -R u+w` retry, no partial-removal accounting, so a crash
+report that was only partly removable (or recoverable via a permission
+retry) was misreported as a flat "skipped" instead of crediting freed bytes.
+`_msc_remove_old_report` (shared by both the top-level `DiagnosticReports`
+sweep and its `Retired` children) now retries a blocked `rm -rf` once with
+`chmod -R u+w`, then — if the path still exists — compares before/after size
+to report and log a `partial` outcome (crediting only the bytes actually
+freed) instead of a blanket skip; the doc comment now states all three
+possible outcomes (removed / partially removed / skipped) accurately.
+
 ## 2.0.3 — 2026-08-11
 
 Fix for a cubic P1 finding (PR #792).

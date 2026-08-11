@@ -266,6 +266,29 @@ teardown () { teardown_fake_home; }
   [ -d "$DR/Retired" ]
 }
 
+@test "DiagnosticReports/Retired: a report blocked by a read-only parent is honestly reported skipped" {
+  # _msc_remove_old_report's items are individual FILES (find -type f), so its
+  # chmod -R u+w retry only ever chmods the file itself — a file's own mode
+  # bits don't gate unlink(2), only the containing directory's write bit does.
+  # Making "Retired" itself read-only therefore CANNOT be recovered by the
+  # retry (verified empirically: chmod -R u+w on the file leaves a
+  # permission-denied rm unchanged), so this deterministically exercises the
+  # still-skipped branch rather than a false "removed"/"partial" claim.
+  [ "$(id -u)" -eq 0 ] && skip "cannot simulate a permission-denied rm as root"
+  DR="$HOME/Library/Logs/DiagnosticReports"
+  mkdir -p "$DR/Retired"
+  touch "$DR/Retired/blocked.crash"
+  touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired/blocked.crash"
+  chmod 555 "$DR/Retired"
+  run bash "$SCRIPTS/clean-safe.sh"
+  chmod 755 "$DR/Retired"   # restore before teardown's rm -rf
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skipped (protected or in use): $DR/Retired/blocked.crash"* ]] || false
+  grep -q "$(printf '\tskipped\t')" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+  [ -e "$DR/Retired/blocked.crash" ]
+  [ -d "$DR/Retired" ]
+}
+
 @test "deferred-skip rollup summarizes in-use and whitelisted skips (A5)" {
   mkdir -p "$HOME/.npm/junk" "$HOME/.gradle/caches/junk"
   printf '~/.npm\n' > "$MSC_WHITELIST_FILE"
