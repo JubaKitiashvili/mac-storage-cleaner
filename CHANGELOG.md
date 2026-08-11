@@ -1,5 +1,65 @@
 # Changelog
 
+## 2.0.2 — 2026-08-11
+
+Fixes for a second round of external review findings.
+
+### Fixed
+- **Electron process guard: metachar-proof literal process probe** — `pgrep
+  -f` patterns are ERE, so an app directory literally named e.g. `App
+  (Beta)` built a regex whose parens were GROUPING, not literal characters,
+  so the literal process name silently never matched its own process
+  (empirically confirmed fail-open, rc 1). The two-probe `pgrep` check is
+  replaced with a literal, case-insensitive `ps` snapshot + `grep -F` match
+  against both process name and full command line — metachar-proof by
+  construction. A failed/empty snapshot is still unknown state (skip), per
+  the existing tri-state contract.
+- **Control-char directory names now fail closed in retention scans** —
+  `version_sorted_children` (DeviceSupport keep-N and the AI-agent version
+  loop, which shares the same enumeration) now skips any child name
+  containing a control character (e.g. an embedded newline) entirely:
+  never counted toward the kept-N slots, never deleted. Such a name would
+  otherwise corrupt the function's newline-delimited line protocol.
+- **Handoff freshness scan is now rc-aware, not just match-aware** — an
+  unreadable descendant inside a Handoff/Universal-Clipboard buffer makes
+  `find`'s traversal exit non-zero without necessarily finding a fresh
+  file; that's an inconclusive scan, not evidence of idleness, so a
+  non-zero `find` exit now also skips the candidate (previously only a
+  found match did).
+- **`DiagnosticReports` cleanup now targets only report artifacts** — the
+  30-day-old enumeration under `~/Library/Logs/DiagnosticReports` is
+  restricted to files matching `*.ips *.crash *.diag *.spin *.hang *.panic
+  *.shutdownStall` (case-insensitive) plus the legacy `Retired` directory,
+  instead of sweeping up anything old sitting in that folder (e.g. a
+  user's own notes file or an unrelated subdirectory).
+- **`survey.sh` Electron cache listing aligned with `clean-safe.sh`** — the
+  Application Support scan now also uses `-mindepth 2`, so a hypothetical
+  top-level `~/Library/Application Support/Cache` is never listed as
+  auto-clearable (it never was auto-cleared; the survey just previously
+  over-reported it).
+- **Narrower system-root subtree denials** — `validate_target_path` now
+  denies `/System`, `/bin`, `/sbin`, `/dev`, and `/private/var/db` as full
+  subtrees (path equals or is under), not just their bare roots.
+  Deliberately scoped: `/Library`, `/Applications`, `/usr`, and `/var` stay
+  bare-root-only denials, since legitimate workflows need to reach inside
+  them (a leftover `/Library/LaunchAgents` plist, `/usr/local` Homebrew
+  cruft, `/private/tmp` scratch caches).
+
+### Note
+An earlier review claimed the stock macOS `sort` lacks `-V` (version sort).
+That claim was tested directly on this machine's shipped `/usr/bin/sort`
+(macOS's bundled 2.3-Apple `sort`) and is **false** — it supports `-V` fine.
+The fail-closed `sort -V` capability probe added in 2.0.1 stays in place
+regardless, as protection for hypothetical older/non-Apple `sort`
+implementations this could run under.
+
+### Testing
+- 80-test bats suite (up from 76): new coverage for the metachar-proof
+  Electron probe (literal-parens app name, idle-vs-running-vs-unknown `ps`
+  states), control-char retention-name fail-closed, rc-aware Handoff
+  freshness scan on an unreadable descendant, `DiagnosticReports` artifact
+  filtering, and the narrowed system-root subtree denials.
+
 ## 2.0.1 — 2026-08-11
 
 Fixes for the external Greptile + cubic code-review findings raised on the

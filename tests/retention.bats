@@ -76,6 +76,23 @@ mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
   [ -e "$DS/leftover.plist" ]      # stray file never touched (not counted, not deleted)
 }
 
+@test "control-char (embedded newline) version dir name is fail-closed: never counted, never deleted (R2)" {
+  DS="$HOME/Library/Developer/Xcode/iOS DeviceSupport"
+  mkdir -p "$DS/16.0 (20A362)" "$DS/17.0 (21A326)" "$DS/18.0 (22B331)"
+  weird_name="$(printf '19.0\n(fake)')"
+  mkdir -p "$DS/$weird_name"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  # normal retention outcome (keep 2 newest of the 3 well-formed dirs) is
+  # unaffected by the weird dir's presence — it must not "outrank" 18.0/17.0
+  # as version 19.0 and steal a kept slot.
+  [ -d "$DS/18.0 (22B331)" ]
+  [ -d "$DS/17.0 (21A326)" ]
+  [ ! -e "$DS/16.0 (20A362)" ]
+  # the control-char-named dir is skipped entirely: never counted, never deleted.
+  [ -d "$DS/$weird_name" ]
+}
+
 @test "partial removal is reported honestly when part of a to-delete DeviceSupport version can't be removed (F9)" {
   # NOTE: this exercises the keep-N per-child loop rather than the safe-tier
   # FOUND loop — the safe-tier loop retries rm after `chmod -R u+w`, which

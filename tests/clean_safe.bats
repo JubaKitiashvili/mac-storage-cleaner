@@ -135,6 +135,21 @@ teardown () { teardown_fake_home; }
   [ ! -e "$PB/fully-old-item" ]
 }
 
+@test "Handoff pasteboard: an unreadable descendant makes the freshness scan fail closed — buffer survives (R3)" {
+  # An unreadable subdir makes `find`'s traversal fail (rc<>0) without
+  # necessarily finding a fresh file — that's an inconclusive scan, not
+  # proof of idleness, so the candidate must be skipped just like an
+  # actually-fresh descendant would skip it.
+  PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
+  mkdir -p "$PB/locked-item/unreadable-sub"
+  touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/locked-item/unreadable-sub" "$PB/locked-item"
+  chmod 000 "$PB/locked-item/unreadable-sub"
+  run bash "$SCRIPTS/clean-safe.sh"
+  chmod 755 "$PB/locked-item/unreadable-sub"   # restore before teardown rm -rf
+  [ "$status" -eq 0 ]
+  [ -d "$PB/locked-item" ]
+}
+
 @test "whitelisting one Handoff pasteboard item protects it while others still clear (I5)" {
   PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
   mkdir -p "$PB/old-item" "$PB/other-old-item"
@@ -200,6 +215,19 @@ teardown () { teardown_fake_home; }
   [ "$status" -eq 0 ]
   [ ! -e "$DR/old.crash" ]
   [ -e "$DR/fresh.crash" ]
+}
+
+@test "DiagnosticReports: only report artifacts are swept — an old non-report file/dir survives (R4)" {
+  DR="$HOME/Library/Logs/DiagnosticReports"
+  mkdir -p "$DR" "$DR/notes"
+  touch "$DR/foo.ips"
+  touch "$DR/README.txt"
+  touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/foo.ips" "$DR/README.txt" "$DR/notes"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [ ! -e "$DR/foo.ips" ]     # a real report artifact, old — removed
+  [ -e "$DR/README.txt" ]   # not a report artifact — survives even though old
+  [ -d "$DR/notes" ]        # not "Retired" — survives even though old
 }
 
 @test "deferred-skip rollup summarizes in-use and whitelisted skips (A5)" {

@@ -2,7 +2,7 @@
 # A4: guarded Electron/Chromium Application Support cache auto-clean.
 load test_helper
 
-setup ()    { setup_fake_home; make_stub brew 1; make_stub xcode-select 1; make_stub pgrep 1; }
+setup ()    { setup_fake_home; make_stub brew 1; make_stub xcode-select 1; make_stub ps 0 "/sbin/launchd"; }
 teardown () { teardown_fake_home; }
 
 @test "Electron-style app cache is removed when the app is not running" {
@@ -14,7 +14,7 @@ teardown () { teardown_fake_home; }
 
 @test "Electron-style app cache is skipped while the app is running (fail closed)" {
   mkdir -p "$HOME/Library/Application Support/FakeApp/Cache/junk"
-  make_stub pgrep 0   # every probe reports "running"
+  make_stub ps 0 "1234 /Applications/FakeApp.app/Contents/MacOS/FakeApp"   # process snapshot shows it running
   run bash "$SCRIPTS/clean-safe.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (app running"* ]] || false
@@ -38,58 +38,36 @@ teardown () { teardown_fake_home; }
   [ -d "$HOME/Library/Application Support/FakeApp/Cache/junk" ]
 }
 
-# G1: an exact-name mismatch (folder name != real process name) must not fail
-# OPEN. Stub pgrep so the exact-name probe (-qix) always misses, but the
-# substring/command-line probe (-qif) hits — that alone must still count as
-# "running" and block the delete (over-matching is the safe direction).
-@test "Electron guard: exact-name miss but command-line substring hit still counts as running (name mismatch fails closed, not open) (G1)" {
-  mkdir -p "$HOME/Library/Application Support/FakeApp/Cache/junk"
-  PGREP_STUB_DIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc-stub-g1.XXXXXX")"
-  cat > "$PGREP_STUB_DIR/pgrep" <<'PGSTUB'
-#!/bin/bash
-case "$*" in
-  *-qif*) exit 0 ;;
-  *) exit 1 ;;
-esac
-PGSTUB
-  chmod +x "$PGREP_STUB_DIR/pgrep"
-  export PATH="$PGREP_STUB_DIR:$PATH"
+# R1(a): pgrep -f treats its pattern as an ERE, so an app dir literally named
+# "FakeApp (Beta)" would build a regex whose parens are GROUPING — the
+# literal process name then never matches its own process (fail-open, the
+# bug this rewrite fixes). A literal `ps` snapshot + `grep -F` must still
+# catch it and block deletion.
+@test "Electron guard: literal parens in app name match via ps+grep -F (metachar-proof, not regex) (R1a)" {
+  mkdir -p "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk"
+  make_stub ps 0 "1234 /Applications/FakeApp (Beta).app/Contents/MacOS/FakeApp (Beta)"
   run bash "$SCRIPTS/clean-safe.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (app running"* ]] || false
-  [ -d "$HOME/Library/Application Support/FakeApp/Cache/junk" ]
+  [ -d "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk" ]
 }
 
-# G1: a clean double miss (both the exact-name AND the substring probe report
-# no match) is the ONLY case that counts as idle and lets deletion proceed.
-@test "Electron guard: a clean double miss on both probes still removes the cache (G1)" {
-  mkdir -p "$HOME/Library/Application Support/FakeApp/Cache/junk"
-  PGREP_STUB_DIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc-stub-g1b.XXXXXX")"
-  cat > "$PGREP_STUB_DIR/pgrep" <<'PGSTUB'
-#!/bin/bash
-exit 1
-PGSTUB
-  chmod +x "$PGREP_STUB_DIR/pgrep"
-  export PATH="$PGREP_STUB_DIR:$PATH"
+# R1(b): a clean ps snapshot containing only unrelated processes is genuine
+# idle evidence — deletion proceeds.
+@test "Electron guard: ps snapshot with only unrelated lines counts as idle — cache removed (R1b)" {
+  mkdir -p "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk"
+  make_stub ps 0 "5678 /usr/sbin/some-other-daemon --flag"
   run bash "$SCRIPTS/clean-safe.sh"
   [ "$status" -eq 0 ]
-  [ ! -e "$HOME/Library/Application Support/FakeApp/Cache" ]
+  [ ! -e "$HOME/Library/Application Support/FakeApp (Beta)/Cache" ]
 }
 
-# G1: assert the exact-name probe is now case-insensitive (-i somewhere in
-# its args), not just a bare `pgrep -x`.
-@test "Electron guard passes case-insensitive (-i) flags on the exact-name probe (G1)" {
-  mkdir -p "$HOME/Library/Application Support/FakeApp/Cache/junk"
-  PGREP_STUB_DIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc-stub-g1c.XXXXXX")"
-  LOGF="$PGREP_STUB_DIR/pgrep.args.log"
-  cat > "$PGREP_STUB_DIR/pgrep" <<PGSTUB
-#!/bin/bash
-printf '%s\n' "\$*" >> "$LOGF"
-exit 1
-PGSTUB
-  chmod +x "$PGREP_STUB_DIR/pgrep"
-  export PATH="$PGREP_STUB_DIR:$PATH"
+# R1(c): a failed/empty ps snapshot is unknown state, not idle — fail closed.
+@test "Electron guard: ps snapshot failure (rc<>0 / empty) is unknown — skipped, not removed (R1c)" {
+  mkdir -p "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk"
+  make_stub ps 1
   run bash "$SCRIPTS/clean-safe.sh"
   [ "$status" -eq 0 ]
-  grep -q -- '-qix' "$LOGF"
+  [[ "$output" == *"skipped (app running"* ]] || false
+  [ -d "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk" ]
 }

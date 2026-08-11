@@ -41,3 +41,7 @@ __HOME__/.aws
 __HOME__/.ssh/id_rsa
 __HOME__/Library/Keychains/login.keychain-db
 __HOME__/Pictures/Photos Library.photoslibrary
+/System/Library/CoreServices/Finder.app
+/private/var/db/dslocal
+/bin/ls
+/dev/disk0

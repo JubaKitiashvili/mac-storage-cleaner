@@ -186,6 +186,23 @@ EOF
   grep -q "refused" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }
 
+@test "validate_target_path subtree-denies exactly /System /bin /sbin /dev /private/var/db, not their siblings (R6)" {
+  # Deny root + everything under it for the five narrowly-scoped system roots.
+  for p in /System/Library/CoreServices/Finder.app /bin/ls /sbin/ping \
+           /dev/disk0 /private/var/db/dslocal; do
+    run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$p"
+    [ "$status" -ne 0 ] || { echo "ACCEPTED system-root subtree path: $p"; false; }
+  done
+  # Deliberately NOT subtree-denied — children must stay reachable for
+  # legitimate workflows (leftover LaunchAgents plist, Homebrew under
+  # /usr/local, /private/tmp and /var/tmp scratch caches).
+  for p in "/Library/LaunchAgents/com.example.stale.plist" "/usr/local/bin/stale-tool" \
+           "/private/tmp/some-scratch-dir" "/var/tmp/leftover"; do
+    run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$p"
+    [ "$status" -eq 0 ] || { echo "REFUSED legitimate child path: $p"; false; }
+  done
+}
+
 @test "validate_target_path refuses another user's home subtree (not just the bare name)" {
   run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "/Users/someoneelse/Documents/file"
   [ "$status" -ne 0 ]
