@@ -24,7 +24,9 @@ hit something a script didn't classify or you need the precise command.
   them. Reversibility is the whole point; never hard-delete a user's data.
 - **When unsure, demote a tier.** A slower rebuild is trivial; deleting a
   license, an unpushable Xcode archive, or someone's only local backup is not.
-- **Every destructive run is logged** to `~/Library/Logs/mac-storage-cleaner/operations.log`.
+- **Every destructive run is logged** to `~/Library/Logs/mac-storage-cleaner/operations.log` —
+  deletions refuse to run unlogged (exit 3) unless the log directory is writable, or
+  `MSC_ALLOW_UNLOGGED=1` explicitly opts into an unlogged run.
 
 ## Workflow
 

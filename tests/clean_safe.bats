@@ -133,3 +133,21 @@ teardown () { teardown_fake_home; }
   [[ "$output" == *"conda clean"* ]] || false
   [ -d "$HOME/miniconda3/pkgs/somepkg" ]   # rm never touches pkgs
 }
+
+@test "unlogged deletions are refused by default (exit 3), cache survives (F8)" {
+  mkdir -p "$HOME/.npm/junk" "$HOME/Library"
+  : > "$HOME/Library/Logs"   # a FILE where a dir is needed -> log_writable fails
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"Refusing to delete unlogged"* ]] || false
+  [ -d "$HOME/.npm/junk" ]
+}
+
+@test "MSC_ALLOW_UNLOGGED=1 overrides the abort-if-unlogged refusal (F8)" {
+  mkdir -p "$HOME/.npm/junk" "$HOME/Library"
+  : > "$HOME/Library/Logs"
+  MSC_ALLOW_UNLOGGED=1 run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"will NOT be recorded"* ]] || false
+  [ ! -e "$HOME/.npm" ]
+}

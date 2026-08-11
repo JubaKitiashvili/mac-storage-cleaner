@@ -37,6 +37,24 @@ teardown () { teardown_fake_home; }
   [ -z "$output" ]
 }
 
+@test "collect() does not word-split a glob match when \$HOME contains a space (F3)" {
+  local FAKE2
+  FAKE2="$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc home.XXXXXX")"
+  mkdir -p "$FAKE2/.gem/ruby/3.0/cache"
+  run env HOME="$FAKE2" bash -c ". '$SCRIPTS/lib.sh'; collect \"\${SAFE_PATHS[@]}\"; printf '%s\n' \"\${FOUND[@]}\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$FAKE2/.gem/ruby/3.0/cache"* ]] || false
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    case "$f" in
+      "$FAKE2"/*) ;;
+      /private/tmp/*) ;;
+      *) echo "split fragment leaked into FOUND: $f"; false ;;
+    esac
+  done <<< "$output"
+  rm -rf "$FAKE2"
+}
+
 @test "clean-safe.sh runs to completion on an empty fake HOME" {
   make_stub brew 1
   make_stub xcode-select 1
@@ -56,6 +74,46 @@ teardown () { teardown_fake_home; }
     run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$line"
     [ "$status" -ne 0 ] || { echo "ACCEPTED dangerous path: $line"; false; }
   done < "$BATS_TEST_DIRNAME/fixtures/dangerous_paths.txt"
+}
+
+@test "validate_target_path never denies a SAFE/KEEP-N/AI-agent allowlisted path (F2 anti-drift property)" {
+  # The allowlist (what clean-safe.sh is willing to delete) must never
+  # intersect the deny list (what validate_target_path refuses) — otherwise
+  # a legitimate cache silently stops being cleanable. Glob entries are
+  # checked via a synthesized concrete instance (each "*" -> "probe").
+  local script
+  script="$(mktemp "${BATS_TMPDIR:-/tmp}/msc-f2-check.XXXXXX")"
+  cat > "$script" <<'EOF'
+set -u
+fail=0
+check () {
+  if ! validate_target_path "$1"; then
+    echo "REFUSED allowlisted path: $1"
+    fail=1
+  fi
+}
+for entry in "${SAFE_PATHS[@]}" "${KEEP_N_PATHS[@]}"; do
+  case "$entry" in
+    *'*'*|*'?'*|*'['*)
+      probe=$(printf '%s' "$entry" | sed 's/\*/probe/g')
+      check "$probe"
+      ;;
+    *)
+      check "$entry"
+      check "$entry/x"
+      ;;
+  esac
+done
+for spec in "${AI_AGENT_SPECS[@]}"; do
+  root="${spec%%|*}"
+  check "$root"
+  check "$root/x"
+done
+exit "$fail"
+EOF
+  run bash -c ". '$SCRIPTS/lib.sh'; . '$script'"
+  rm -f "$script"
+  [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
 
 @test "trailing slash on \$HOME does not disable home-relative deny rules (C1)" {
@@ -91,8 +149,11 @@ teardown () { teardown_fake_home; }
 @test "validate_target_path accepts normal user files and dirs" {
   mkdir -p "$HOME/Downloads/old-stuff"
   touch "$HOME/Downloads/movie.mkv"
+  # NOTE: $HOME/.ssh/old_key_backup used to be in this list, but .ssh is now
+  # subtree-denied (F1) — that's the whole point, so it moved to the
+  # never-tier subtree-denial test below instead of staying here.
   for p in "$HOME/Downloads/old-stuff" "$HOME/Downloads/movie.mkv" \
-           "$HOME/Library/Containers/com.example.gone" "$HOME/.ssh/old_key_backup"; do
+           "$HOME/Library/Containers/com.example.gone" "$HOME/Downloads/keys-notes.txt"; do
     run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$p"
     [ "$status" -eq 0 ] || { echo "REFUSED legitimate path: $p"; false; }
   done
@@ -104,8 +165,23 @@ teardown () { teardown_fake_home; }
   [ "$status" -ne 0 ]
 }
 
+@test "validate_target_path subtree-denies never-tier locations, not just their bare roots (F1)" {
+  for p in "$HOME/Library/Application Support/MobileSync/Backup/ABC123" \
+           "$HOME/Library/Keychains/login.keychain-db" \
+           "$HOME/Library/Mail/V10/foo" \
+           "$HOME/Library/Messages/chat.db" \
+           "$HOME/.ssh/id_ed25519" \
+           "$HOME/.aws/credentials" \
+           "$HOME/Pictures/Photos Library.photoslibrary" \
+           "$HOME/Pictures/Photos Library.photoslibrary/database/Photos.sqlite"; do
+    run bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$p"
+    [ "$status" -ne 0 ] || { echo "ACCEPTED never-tier subtree path: $p"; false; }
+  done
+}
+
 @test "trash-items.sh refuses a protected path and logs it" {
   run bash "$SCRIPTS/trash-items.sh" "$HOME/Library"
+  [ "$status" -eq 2 ]
   [[ "$output" == *"REFUSED"* ]] || false
   grep -q "refused" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }

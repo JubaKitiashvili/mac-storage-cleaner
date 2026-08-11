@@ -3,11 +3,15 @@
 # Use for anything riskier than a pure cache: ask-tier items, app leftovers,
 # big/old files. The user can restore from Trash until it's emptied. Every
 # action is logged. Usage: trash-items.sh <path> [<path> ...]
+# Exit codes: 0 = ok (nothing failed); 1 = at least one item could not be
+# trashed (permissions/TCC); 2 = every item was refused and nothing moved;
+# 3 = refused to run at all because the audit log isn't writable (see
+# MSC_ALLOW_UNLOGGED below).
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/lib.sh"
 
-[ "$#" -eq 0 ] && { echo "usage: trash-items.sh <path> [<path> ...]"; exit 1; }
+[ "$#" -eq 0 ] && { echo "usage: trash-items.sh <path> [<path> ...]  (exit 0=ok, 1=a trash failed, 2=all refused/nothing moved, 3=audit log unwritable)"; exit 1; }
 
 # MSC_DRY_RUN=1 is a REAL preview here, not just a log_op no-op: without this,
 # a caller that exports MSC_DRY_RUN=1 (e.g. following clean-safe.sh's
@@ -20,8 +24,20 @@ DRY=0
 export MSC_DRY_RUN="$DRY"
 [ "$DRY" = 1 ] && echo "=== DRY RUN — nothing will be trashed ==="
 
-[ "$DRY" = 1 ] || log_writable || echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — items will still be trashed, but this run will NOT be recorded."
+# Abort-if-unlogged: a run that trashes items without recording what it did
+# defeats the whole audit-trail promise. Refuse by default; MSC_ALLOW_UNLOGGED=1
+# is an explicit, opt-in escape hatch (falls back to the old warn-and-continue).
+if [ "$DRY" != 1 ] && ! log_writable; then
+  if [ "${MSC_ALLOW_UNLOGGED:-0}" = "1" ]; then
+    echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — items will still be trashed, but this run will NOT be recorded."
+  else
+    echo "✗ Cannot write the audit log ($LOG_DIR/operations.log). Refusing to delete unlogged. Set MSC_ALLOW_UNLOGGED=1 to override."
+    exit 3
+  fi
+fi
 moved=0
+failed=0
+refused=0
 for p in "$@"; do
   if [ ! -e "$p" ] && [ ! -L "$p" ]; then
     echo "  not found: $p"
@@ -35,6 +51,7 @@ for p in "$@"; do
   if ! validate_target_path "$p"; then
     echo "  REFUSED (protected system/user root — never trashed by this tool): $p"
     log_op refused "-" "$p"
+    refused=$((refused + 1))
     continue
   fi
   sz=$(human_kb "$(size_kb "$p")")
@@ -57,9 +74,11 @@ for p in "$@"; do
   elif [ "$rc" -eq 2 ]; then
     echo "  REFUSED (protected system/user root — never trashed by this tool): $p"
     log_op refused "-" "$p"
+    refused=$((refused + 1))
   else
     echo "  could NOT trash (permissions/TCC?): $p"
     log_op trash-failed "$sz" "$p"
+    failed=$((failed + 1))
   fi
 done
 
@@ -71,3 +90,10 @@ else
   echo "Space is reclaimed when the Trash is emptied (Finder > Empty Trash)."
 fi
 echo "Log: $LOG_DIR/operations.log"
+
+if [ "$failed" -gt 0 ]; then
+  exit 1
+elif [ "$refused" -gt 0 ] && [ "$moved" -eq 0 ]; then
+  exit 2
+fi
+exit 0

@@ -40,7 +40,7 @@ license file, an unpushable archive, or someone's only local backup is not.
 | `~/Library/Caches/go-build` | Go compile cache | `go clean -cache` or `rm -rf` | next `go build` |
 | `~/Library/Caches/Homebrew` + downloads | brew bottle/download cache | `brew cleanup -s --prune=all` | next `brew install` |
 | `~/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard` | Handoff / Universal Clipboard transfer buffers; `useractivityd` is supposed to prune these itself but can leave many GB behind (mole #1178) | `rm -rf` **only items older than 60 minutes** (age-gated — an in-flight Universal Clipboard sync must never be cut) | automatically as new Handoff transfers occur |
-| `/private/tmp/{metro-*,haste-map-*,react-*}` | Metro/RN temp | `rm -rf` | next Metro start |
+| `/private/tmp/{metro-*,haste-map-*,react-native-packager-cache-*,react-packager-cache-*}` | Metro/RN temp | `rm -rf` | next Metro start (bare `react-*` is deliberately NOT safe — it would match user clones like `react-native-fork`) |
 | `~/Library/Caches/<app>` (generic, NOT on the list above) | most per-app caches | prefer `trash-items.sh` (reversible); `rm -rf` only once you've confirmed it's a pure cache | usually automatic — but some apps keep the only local copy of downloaded content or a token here, so verify before deleting |
 
 **Browser & Electron app caches (safe, but quit the app first):** delete only the
@@ -87,6 +87,12 @@ cache *subfolders* — never the whole app-support folder, which holds real data
   genuinely wedged: `tmutil thinlocalsnapshots / 999999999999 4`.
 - `/System`, `/Library/Caches`, `/private/var/folders`, dyld shared cache — system-owned
   or SIP-protected. Leave them to macOS; don't reach for `sudo` to force it.
+
+These are now mechanically refused by trash-items.sh, not just policy: `~/Library/Application
+Support/MobileSync/Backup`, `~/Library/Keychains`, `~/Library/Mail`, `~/Library/Messages`,
+`~/.ssh`, `~/.aws`, `~/.gnupg`, and `~/Pictures/*.photoslibrary` are subtree-denied in
+`validate_target_path` — passing them (or anything underneath them) to `trash-items.sh`
+is refused, not just discouraged.
 
 ## App leftovers (uninstalled apps)
 

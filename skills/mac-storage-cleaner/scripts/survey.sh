@@ -15,12 +15,29 @@ if [ -d /System/Volumes/Data ]; then df -h /System/Volumes/Data 2>/dev/null | se
 echo
 
 echo "===== SAFE caches — auto-clearable (only cost: slower next build) ====="
+load_whitelist
 collect "${SAFE_PATHS[@]}"
 if [ "${#FOUND[@]}" -gt 0 ]; then
-  du -sh "${FOUND[@]}" 2>/dev/null | sort -rh
+  # Partition into eligible (would actually be cleared) vs whitelisted (user
+  # opted these out) BEFORE totaling, so "reclaimable" never overstates what
+  # clean-safe.sh would really do — a whitelisted multi-GB cache silently
+  # inflating the headline total would be exactly the kind of dishonest
+  # accounting this tool exists to avoid.
+  eligible=(); wl=()
+  for f in "${FOUND[@]}"; do
+    if is_whitelisted "$f"; then wl+=("$f"); else eligible+=("$f"); fi
+  done
+  {
+    [ "${#eligible[@]}" -gt 0 ] && du -sh "${eligible[@]}" 2>/dev/null
+    [ "${#wl[@]}" -gt 0 ] && du -sh "${wl[@]}" 2>/dev/null | sed 's/$/ (whitelisted — excluded from total)/'
+  } | sort -rh
   line
-  du -sch "${FOUND[@]}" 2>/dev/null | tail -1 | awk '{print "reclaimable in safe tier: "$1}'
-  load_whitelist
+  if [ "${#eligible[@]}" -gt 0 ]; then
+    du -sch "${eligible[@]}" 2>/dev/null | tail -1 | awk '{print "reclaimable in safe tier: "$1}'
+  else
+    echo "reclaimable in safe tier: $(human_kb 0)"
+  fi
+  echo "  (process-guarded items may still be skipped at run time — clean-safe.sh --dry-run gives the exact preview)"
   [ "${#WHITELIST[@]}" -gt 0 ] && \
     echo "  (whitelist active: ${#WHITELIST[@]} protected pattern(s) — clean-safe will skip matches; edit $MSC_WHITELIST_FILE)"
 else

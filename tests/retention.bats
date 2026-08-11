@@ -70,6 +70,36 @@ mk_ds () {   # four version dirs, mtimes 4d..1d old; "18.5 (22F76)" newest
   [ -e "$DS/leftover.plist" ]      # stray file never touched (not counted, not deleted)
 }
 
+@test "partial removal is reported honestly when part of a to-delete DeviceSupport version can't be removed (F9)" {
+  # NOTE: this exercises the keep-N per-child loop rather than the safe-tier
+  # FOUND loop — the safe-tier loop retries rm after `chmod -R u+w`, which
+  # would restore write access to a chmod-555 fixture and undo a "partial"
+  # scenario before the honesty check ever gets to see it. The keep-N loop
+  # shares the identical partial-detection code path with no such retry, so
+  # it's a reliable place to exercise it.
+  [ "$(id -u)" -eq 0 ] && skip "cannot simulate a permission-denied rm as root"
+  DS="$HOME/Library/Developer/Xcode/iOS DeviceSupport"
+  mkdir -p "$DS/16.0 (oldest)" "$DS/17.0 (mid)" "$DS/18.0 (newest)"
+  mkdir -p "$DS/16.0 (oldest)/protected"
+  dd if=/dev/zero of="$DS/16.0 (oldest)/removable-file" bs=1024 count=200 2>/dev/null
+  dd if=/dev/zero of="$DS/16.0 (oldest)/protected/blob" bs=1024 count=50 2>/dev/null
+  chmod 555 "$DS/16.0 (oldest)/protected"
+  # Set mtimes LAST: the mkdir/dd calls above bump "16.0 (oldest)"'s own
+  # mtime as a side effect of adding directory entries, so touching it
+  # earlier (before its content exists) would get silently overwritten.
+  touch -t "$(date -v-3d +%Y%m%d%H%M)" "$DS/16.0 (oldest)"
+  touch -t "$(date -v-2d +%Y%m%d%H%M)" "$DS/17.0 (mid)"
+  touch -t "$(date -v-1d +%Y%m%d%H%M)" "$DS/18.0 (newest)"
+  run bash "$SCRIPTS/clean-safe.sh"
+  chmod 755 "$DS/16.0 (oldest)/protected"   # restore before teardown rm -rf
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"partially removed"* ]] || false
+  grep -q "$(printf '\tpartial\t')" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+  [ -d "$DS/16.0 (oldest)/protected" ]        # blocked content survives
+  [ ! -e "$DS/16.0 (oldest)/removable-file" ] # unblocked content still freed
+  [ -d "$DS/17.0 (mid)" ]; [ -d "$DS/18.0 (newest)" ]   # 2 newest still kept
+}
+
 @test "survey shows the actual MSC_DEVICE_SUPPORT_KEEP value, not a hardcoded 2 (preview == reality)" {
   mk_ds
   MSC_DEVICE_SUPPORT_KEEP=5 run bash "$SCRIPTS/survey.sh"

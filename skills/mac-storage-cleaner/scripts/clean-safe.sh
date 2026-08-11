@@ -21,13 +21,30 @@ export MSC_DRY_RUN="$DRY"
 
 total_kb=0
 skipped=0
-[ "$DRY" = 1 ] || log_writable || echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — cleanup will proceed, but this run will NOT be recorded."
+# Abort-if-unlogged: a run that deletes without recording what it deleted
+# defeats the whole audit-trail promise. Refuse by default; MSC_ALLOW_UNLOGGED=1
+# is an explicit, opt-in escape hatch for the rare case the log dir genuinely
+# can't be made writable (falls back to the old warn-and-continue behavior).
+if [ "$DRY" != 1 ] && ! log_writable; then
+  if [ "${MSC_ALLOW_UNLOGGED:-0}" = "1" ]; then
+    echo "⚠ Cannot write the audit log ($LOG_DIR/operations.log) — cleanup will proceed, but this run will NOT be recorded."
+  else
+    echo "✗ Cannot write the audit log ($LOG_DIR/operations.log). Refusing to delete unlogged. Set MSC_ALLOW_UNLOGGED=1 to override."
+    exit 3
+  fi
+fi
 echo "Clearing safe caches (pure caches only)..."
 collect "${SAFE_PATHS[@]}"
 # bash 3.2 (macOS default) throws "unbound variable" on "${FOUND[@]}" when the
 # array is empty under `set -u` — which happens on a fresh Mac with no dev
 # caches. Guard the loop so a clean machine reports "nothing to do" instead of crashing.
 [ "${#FOUND[@]}" -gt 0 ] && for p in "${FOUND[@]}"; do
+  if [ -L "$p" ]; then
+    echo "  skipped (symlink — removing it would only delete the link, not the data): $p"
+    log_op skipped-symlink "-" "$p"
+    skipped=$((skipped + 1))
+    continue
+  fi
   if is_whitelisted "$p"; then
     echo "  skipped (whitelisted): $p"
     log_op skipped-whitelisted "-" "$p"
@@ -41,6 +58,12 @@ collect "${SAFE_PATHS[@]}"
     continue
   fi
   kb=$(size_kb "$p")
+  if ! validate_target_path "$p"; then
+    echo "  REFUSED (protected path reached deletion loop — report this): $p"
+    log_op refused "-" "$p"
+    skipped=$((skipped + 1))
+    continue
+  fi
   if [ "$DRY" = 1 ]; then
     echo "  would remove $(human_kb "${kb:-0}")  $p"
     total_kb=$((total_kb + ${kb:-0}))
@@ -51,9 +74,17 @@ collect "${SAFE_PATHS[@]}"
     rm -rf "$p" 2>/dev/null
   fi
   if [ -e "$p" ]; then
-    echo "  skipped (macOS App Management/TCC-protected or in use): $p"
-    log_op skipped "$(human_kb "${kb:-0}")" "$p"
-    skipped=$((skipped + 1))
+    kb_after=$(size_kb "$p")
+    if [ -n "$kb_after" ] && [ "${kb_after:-0}" -lt "${kb:-0}" ]; then
+      freed=$(( ${kb:-0} - kb_after ))
+      echo "  partially removed ($(human_kb "$freed") freed, $(human_kb "$kb_after") blocked): $p"
+      log_op partial "$(human_kb "$freed")" "$p"
+      total_kb=$((total_kb + freed)); skipped=$((skipped + 1))
+    else
+      echo "  skipped (macOS App Management/TCC-protected or in use): $p"
+      log_op skipped "$(human_kb "${kb:-0}")" "$p"
+      skipped=$((skipped + 1))
+    fi
   else
     echo "  removed $(human_kb "${kb:-0}")  $p"
     log_op removed "$(human_kb "${kb:-0}")" "$p"
@@ -79,17 +110,33 @@ for base in "${KEEP_N_PATHS[@]}"; do
     [ -n "$child" ] || continue
     p="$base/$child"
     [ -e "$p" ] || continue
+    if [ -L "$p" ]; then
+      echo "  skipped (symlink — removing it would only delete the link, not the data): $p"
+      log_op skipped-symlink "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     if is_whitelisted "$p"; then
       echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
     fi
     kb=$(size_kb "$p")
+    if ! validate_target_path "$p"; then
+      echo "  REFUSED (protected path reached deletion loop — report this): $p"
+      log_op refused "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     if [ "$DRY" = 1 ]; then
       echo "  would remove $(human_kb "${kb:-0}")  $p"
       total_kb=$((total_kb + ${kb:-0})); removed_any=1; continue
     fi
     rm -rf "$p" 2>/dev/null
     if [ -e "$p" ]; then
-      echo "  skipped (protected or in use): $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+      kb_after=$(size_kb "$p")
+      if [ -n "$kb_after" ] && [ "${kb_after:-0}" -lt "${kb:-0}" ]; then
+        freed=$(( ${kb:-0} - kb_after ))
+        echo "  partially removed ($(human_kb "$freed") freed, $(human_kb "$kb_after") blocked): $p"
+        log_op partial "$(human_kb "$freed")" "$p"
+        total_kb=$((total_kb + freed)); skipped=$((skipped+1))
+      else
+        echo "  skipped (protected or in use): $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+      fi
     else
       echo "  removed $(human_kb "${kb:-0}")  $p"; log_op removed "$(human_kb "${kb:-0}")" "$p"
       total_kb=$((total_kb + ${kb:-0})); removed_any=1
@@ -121,17 +168,33 @@ for spec in "${AI_AGENT_SPECS[@]}"; do
     if [ "$kept_others" -lt "$AIKEEP" ]; then kept_others=$((kept_others+1)); continue; fi
     p="$root/$child"
     [ -e "$p" ] || continue
+    if [ -L "$p" ]; then
+      echo "  skipped (symlink — removing it would only delete the link, not the data): $p"
+      log_op skipped-symlink "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     if is_whitelisted "$p"; then
       echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
     fi
     kb=$(size_kb "$p")
+    if ! validate_target_path "$p"; then
+      echo "  REFUSED (protected path reached deletion loop — report this): $p"
+      log_op refused "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     if [ "$DRY" = 1 ]; then
       echo "  would remove $(human_kb "${kb:-0}")  $p ($label old version)"
       total_kb=$((total_kb + ${kb:-0})); continue
     fi
     rm -rf "$p" 2>/dev/null
     if [ -e "$p" ]; then
-      echo "  skipped: $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+      kb_after=$(size_kb "$p")
+      if [ -n "$kb_after" ] && [ "${kb_after:-0}" -lt "${kb:-0}" ]; then
+        freed=$(( ${kb:-0} - kb_after ))
+        echo "  partially removed ($(human_kb "$freed") freed, $(human_kb "$kb_after") blocked): $p"
+        log_op partial "$(human_kb "$freed")" "$p"
+        total_kb=$((total_kb + freed)); skipped=$((skipped+1))
+      else
+        echo "  skipped: $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+      fi
     else
       echo "  removed $(human_kb "${kb:-0}")  $p ($label old version)"
       log_op removed "$(human_kb "${kb:-0}")" "$p"; total_kb=$((total_kb + ${kb:-0}))
@@ -154,6 +217,10 @@ if [ -d "$PB" ] && [ ! -L "$PB" ] && ! is_whitelisted "$PB"; then
       echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
     fi
     kb=$(size_kb "$p")
+    if ! validate_target_path "$p"; then
+      echo "  REFUSED (protected path reached deletion loop — report this): $p"
+      log_op refused "-" "$p"; skipped=$((skipped+1)); continue
+    fi
     if [ "$DRY" = 1 ]; then
       echo "  would remove $(human_kb "${kb:-0}")  $p (Handoff clipboard buffer)"
       total_kb=$((total_kb + ${kb:-0})); continue
@@ -179,7 +246,7 @@ if command -v brew >/dev/null 2>&1; then
   else
     echo "  brew cleanup (brew cleanup -s --prune=all)..."
     if brew cleanup -s --prune=all >/dev/null 2>&1; then
-      echo "  done: brew cleanup"; log_op cleaned "brew cache" "brew cleanup -s --prune=all"
+      echo "  done: brew cleanup"; log_op cleaned "-" "brew cleanup -s --prune=all"
     else
       echo "  (brew cleanup didn't complete — skipped)"
     fi
@@ -191,7 +258,7 @@ if command -v conda >/dev/null 2>&1; then
     echo "  would run: conda clean -y --tarballs --index-cache --logfiles"
   else
     if conda clean -y --tarballs --index-cache --logfiles >/dev/null 2>&1; then
-      echo "  done: conda clean"; log_op cleaned "conda caches" "conda clean -y --tarballs --index-cache --logfiles"
+      echo "  done: conda clean"; log_op cleaned "-" "conda clean -y --tarballs --index-cache --logfiles"
     else
       echo "  (conda clean didn't complete — skipped)"
     fi
@@ -207,7 +274,7 @@ if xcode-select -p >/dev/null 2>&1 && command -v xcrun >/dev/null 2>&1; then
     echo "  would run: xcrun simctl delete unavailable"
   else
     if xcrun simctl delete unavailable >/dev/null 2>&1; then
-      echo "  done: removed unavailable simulators"; log_op cleaned "unavailable simulators" "simctl delete unavailable"
+      echo "  done: removed unavailable simulators"; log_op cleaned "-" "simctl delete unavailable"
     else
       echo "  (no unavailable simulators to remove, or simctl unavailable)"
     fi

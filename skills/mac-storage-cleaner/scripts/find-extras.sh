@@ -87,10 +87,10 @@ find "$HOME/Downloads" "$HOME/Desktop" "$HOME/Documents" "$HOME/Movies" \
 echo
 
 echo "===== Old Downloads (not modified in 90+ days) ====="
-old=$(find "$HOME/Downloads" -maxdepth 1 -mtime +90 2>/dev/null | wc -l | tr -d ' ')
+old=$(find "$HOME/Downloads" -mindepth 1 -maxdepth 1 -mtime +90 2>/dev/null | wc -l | tr -d ' ')
 if [ "${old:-0}" -gt 0 ]; then
   echo "  $old item(s), totaling:"
-  find "$HOME/Downloads" -maxdepth 1 -mtime +90 -exec du -sk {} + 2>/dev/null \
+  find "$HOME/Downloads" -mindepth 1 -maxdepth 1 -mtime +90 -exec du -sk {} + 2>/dev/null \
     | awk '{s+=$1} END{printf "  %.1f GB\n", s/1024/1024}'
 else
   echo "  (none)"

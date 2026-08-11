@@ -61,3 +61,25 @@ EOF
   [ ! -e "$HOME/Downloads/old-stuff" ]
   grep -q "trashed" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }
+
+@test "clean-safe.sh skips a symlinked safe-tier path instead of deleting through it (F4a)" {
+  mkdir -p "$HOME/real-cache/data"
+  ln -s "$HOME/real-cache" "$HOME/.npm"
+  make_stub brew 1; make_stub xcode-select 1
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skipped (symlink"* ]] || false
+  [ -d "$HOME/real-cache/data" ]
+  [ -L "$HOME/.npm" ]
+}
+
+@test "trash_path on a symlink skips Finder entirely and uses mv, moving only the link (F4b)" {
+  mkdir -p "$HOME/real-target"
+  ln -s "$HOME/real-target" "$HOME/link-to-target"
+  make_stub osascript 0   # a stub that would "succeed" if Finder were ever invoked
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; MSC_TRASH_BIN=/nonexistent trash_path '$HOME/link-to-target' && echo method=\$TRASH_METHOD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"method=mv"* ]] || false
+  [ -L "$HOME/.Trash/link-to-target" ]
+  [ -d "$HOME/real-target" ]
+}

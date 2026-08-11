@@ -52,3 +52,37 @@ write_wl () { printf '%s\n' "$@" > "$MSC_WHITELIST_FILE"; }
   [ "$status" -eq 0 ]
   [ "$output" = "$(printf 'unprotected\nroot-unprotected')" ]
 }
+
+@test "whitelist matching is case-insensitive, like APFS default volumes (F6)" {
+  write_wl '~/Library/Caches/Pip' '~/Library/Caches/Electron*'
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; load_whitelist
+    is_whitelisted '$HOME/library/caches/pip'             && echo A
+    is_whitelisted '$HOME/Library/Caches/pip'              && echo B
+    is_whitelisted '$HOME/Library/Caches/electron-builder' && echo C
+    is_whitelisted '$HOME/LIBRARY/CACHES/ELECTRON-BUILDER' && echo D"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'A\nB\nC\nD')" ]
+}
+
+@test "whitelist '#' handling: literal # in a path survives; trailing/full-line comments still parse (F7)" {
+  mkdir -p "$HOME/Downloads"
+  write_wl '~/Downloads/report#2' '~/.npm  # keep this' '# full line comment'
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; load_whitelist
+    is_whitelisted '$HOME/Downloads/report#2' && echo A
+    is_whitelisted '$HOME/.npm'                && echo B
+    [ \"\${#WHITELIST[@]}\" -eq 2 ]             && echo C"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'A\nB\nC')" ]
+}
+
+@test "survey excludes whitelisted safe-tier caches from the reclaimable total (F11)" {
+  mkdir -p "$HOME/.npm/junk" "$HOME/.cache/pip/junk"
+  dd if=/dev/zero of="$HOME/.npm/junk/blob" bs=1024 count=100 2>/dev/null
+  dd if=/dev/zero of="$HOME/.cache/pip/junk/blob" bs=1024 count=50 2>/dev/null
+  write_wl '~/.npm'
+  run bash "$SCRIPTS/survey.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$HOME/.npm (whitelisted — excluded from total)"* ]] || false
+  pip_total=$(du -sh "$HOME/.cache/pip" 2>/dev/null | awk '{print $1}')
+  [[ "$output" == *"reclaimable in safe tier: $pip_total"* ]] || false
+}

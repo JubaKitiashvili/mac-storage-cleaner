@@ -108,15 +108,20 @@ NEVER_PATHS=(
 )
 
 # collect PATTERNS... -> fills global array FOUND with existing matches.
-# Handles globs (word-split, no spaces in our glob patterns) and plain paths
-# with spaces (quoted -e test). Resets FOUND on each call.
+# Handles globs (IFS suppressed during the unquoted expansion below, so a
+# $HOME containing a space is never word-split into fragments before the
+# glob is expanded) and plain paths with spaces (quoted -e test). Resets
+# FOUND on each call.
 collect () {
   FOUND=()
-  local pat m
+  local pat m _oldIFS
   for pat in "$@"; do
     case "$pat" in
       *'*'*|*'?'*|*'['*)
-        for m in $pat; do [ -e "$m" ] && FOUND+=("$m"); done ;;
+        _oldIFS="${IFS-$' \t\n'}"
+        IFS=''
+        for m in $pat; do [ -e "$m" ] && FOUND+=("$m"); done
+        IFS="$_oldIFS" ;;
       *)
         [ -e "$pat" ] && FOUND+=("$pat") ;;
     esac
@@ -160,18 +165,19 @@ validate_target_path () {
   local p="$1"
   [ -n "$p" ] || return 1
   case "$p" in /*) ;; *) return 1 ;; esac          # absolute only
-  # Control chars / newline only — locale-independent. Force C so an ambient
-  # non-UTF-8-aware locale doesn't misclassify legitimate multibyte UTF-8
-  # filenames (café.txt, Georgian names, ...) as non-printable and refuse
-  # them; [:cntrl:] under C is 0x00-0x1F/0x7F in every locale, so real control
-  # characters (newline, tab, ...) are still caught while UTF-8 high bytes
-  # pass through untouched. Scoped to this function via bash's dynamic `local`.
-  local LC_ALL=C
+  # Control chars / newline only. [:cntrl:] is 0x00-0x1F/0x7F in every
+  # locale this runs under, so real control characters (newline, tab, ...)
+  # are caught while legitimate multibyte UTF-8 filenames (café.txt,
+  # Georgian names, ...) pass through untouched. (A `local LC_ALL=C` used to
+  # sit here but — unlike the tr/sed helpers below — never actually reached
+  # this in-process `case` match without being exported, so it did nothing;
+  # removed. The locale-sensitive helpers each pin LC_ALL=C explicitly,
+  # per-command, instead.)
   case "$p" in *[[:cntrl:]]*) return 1 ;; esac
   case "/$p/" in */../*) return 1 ;; esac          # no .. traversal
   # Normalize // and /./ spellings, strip trailing / and /.
   local norm
-  norm=$(printf '%s' "$p" | sed -e 's#//*#/#g' -e 's#/\./#/#g' -e 's#/\.$##' -e 's#\(.\)/$#\1#')
+  norm=$(printf '%s' "$p" | LC_ALL=C sed -e 's#//*#/#g' -e 's#/\./#/#g' -e 's#/\.$##' -e 's#\(.\)/$#\1#')
   [ -n "$norm" ] || norm="/"
   _vtp_denied "$norm" && return 1
   # Ancestor-symlink defense: re-run the deny check on the physically resolved
@@ -198,8 +204,8 @@ validate_target_path () {
 # Case-insensitive membership test against the deny roots. rc 0 = denied.
 _vtp_denied () {
   local lower home_lower r
-  lower=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-  home_lower=$(printf '%s' "$HOME" | tr '[:upper:]' '[:lower:]')
+  lower=$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+  home_lower=$(printf '%s' "$HOME" | LC_ALL=C tr '[:upper:]' '[:lower:]')
   # Strip ALL trailing slashes (bash 3.2 loop, mirrors load_whitelist below):
   # a $HOME with a trailing slash (some launchd/login-shell setups export one)
   # would otherwise make every "$home_lower/..." deny entry carry a doubled
@@ -215,6 +221,30 @@ _vtp_denied () {
            "$home_lower/.ssh" "$home_lower/.aws"; do
     [ "$lower" = "$r" ] && return 0
   done
+  # Subtree denials (panel finding #1): the exact-root loop above only
+  # catches the bare root itself — these NEVER-tier locations are just as
+  # off-limits one level down (and every level below that), so deny the
+  # root AND everything under it. Local iOS/iPadOS backups, keychains,
+  # Mail/Messages databases, and SSH/AWS/GPG credential stores are user data
+  # that does not come back; trash-items.sh must refuse them mechanically,
+  # not rely on policy/docs alone.
+  local vtp_never_roots=(
+    "$home_lower/library/application support/mobilesync"
+    "$home_lower/library/keychains"
+    "$home_lower/library/mail"
+    "$home_lower/library/messages"
+    "$home_lower/.ssh"
+    "$home_lower/.aws"
+    "$home_lower/.gnupg"
+  )
+  for r in "${vtp_never_roots[@]}"; do
+    case "$lower" in "$r"|"$r"/*) return 0 ;; esac
+  done
+  # Photos libraries — the bundle itself and everything inside it (masters,
+  # database, ...), not just the bare ".photoslibrary" root.
+  case "$lower" in
+    "$home_lower/pictures/"*.photoslibrary|"$home_lower/pictures/"*.photoslibrary/*) return 0 ;;
+  esac
   case "$lower" in
     /applications/*.app) return 0 ;;   # installed app bundles: use an uninstaller
     /users/*)
@@ -269,7 +299,14 @@ trash_path () {
   if [ -x "$bin" ] && "$bin" "$p" >/dev/null 2>&1; then
     TRASH_METHOD="trash-cli"; return 0
   fi
-  if osascript - "$p" >/dev/null 2>&1 <<'APPLESCRIPT'
+  # Symlink argv gets link-only semantics everywhere else in this chain
+  # (MSC_TRASH_BIN and the mv fallback both operate on the link itself, never
+  # its target) — but Finder's AppleScript `POSIX file ... as alias`
+  # coercion resolves an alias to whatever it points AT, which is divergent
+  # (and surprising: the caller asked to trash the link, not silently trash
+  # the target it happens to point to). Skip the Finder stage entirely for a
+  # symlink and fall straight through to the same-volume mv fallback below.
+  if [ ! -L "$p" ] && osascript - "$p" >/dev/null 2>&1 <<'APPLESCRIPT'
 on run argv
   tell application "Finder" to delete (POSIX file (item 1 of argv) as alias)
 end run
@@ -337,8 +374,16 @@ EOF
 }
 
 # --- User whitelist -------------------------------------------------------
-# Optional user-owned protection list: one path or glob per line, '#' comments,
-# leading ~/ expands to $HOME. An entry protects itself and everything under it.
+# Optional user-owned protection list: one path or glob per line, leading ~/
+# expands to $HOME. An entry protects itself and everything under it.
+# '#' comments: a line whose first non-space character is '#' is ignored
+# entirely; a '#' later in the line only starts a trailing comment when it is
+# preceded by whitespace, so a literal '#' inside a path (e.g.
+# "~/Downloads/report#2") is never misread as a comment start. Matching is
+# case-insensitive, like APFS default (non-case-sensitive) volumes: every
+# entry is folded to lowercase at load time and every path checked against
+# it is folded the same way, so "~/Library/Caches/Pip" protects both
+# ".../Caches/Pip" and ".../caches/pip".
 # clean-safe.sh consults this before every deletion, so a user who wants e.g.
 # DerivedData kept doesn't have to rely on the agent remembering (mole's
 # ~/.config/mole/whitelist, simplified).
@@ -347,9 +392,18 @@ WHITELIST=()
 load_whitelist () {
   WHITELIST=()
   [ -f "$MSC_WHITELIST_FILE" ] || return 0
-  local raw line
+  local raw line stripped
   while IFS= read -r raw || [ -n "$raw" ]; do
-    line="${raw%%#*}"
+    # Full-line comment: first non-space character is '#' — skip entirely.
+    stripped=$(printf '%s' "$raw" | sed -e 's/^[[:space:]]*//')
+    case "$stripped" in '#'*) continue ;; esac
+    # Trailing comment: only strip a '#' that is preceded by whitespace
+    # (space or tab), so a '#' embedded in a filename is left alone.
+    case "$raw" in
+      *' #'*) line="${raw%% #*}" ;;
+      *$'\t#'*) line="${raw%%$'\t#'*}" ;;
+      *) line="$raw" ;;
+    esac
     # trim surrounding whitespace (bash 3.2: no extglob)
     line=$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     [ -z "$line" ] && continue
@@ -360,11 +414,17 @@ load_whitelist () {
     while [ "${line%/}" != "$line" ]; do line="${line%/}"; done
     [ -z "$line" ] && continue
     case "$line" in "~") line="$HOME" ;; "~/"*) line="$HOME/${line#\~/}" ;; esac
+    # Fold case (APFS default volumes are case-insensitive) so an entry
+    # protects a path regardless of the case either happens to be spelled in.
+    line=$(printf '%s' "$line" | LC_ALL=C tr '[:upper:]' '[:lower:]')
     WHITELIST+=("$line")
   done < "$MSC_WHITELIST_FILE"
 }
-is_whitelisted () {   # rc 0 = protected. Entries may be globs — $e is unquoted in case.
-  local p="$1" e
+is_whitelisted () {   # rc 0 = protected. Entries may be globs — $e is unquoted
+                       # in case. Case-insensitive, like APFS default volumes
+                       # (see load_whitelist).
+  local p e
+  p=$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')
   [ "${#WHITELIST[@]}" -eq 0 ] && return 1
   for e in "${WHITELIST[@]}"; do
     case "$p" in $e|$e/*) return 0 ;; esac
