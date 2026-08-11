@@ -1,5 +1,11 @@
 # mac-storage-cleaner
 
+[![version](https://img.shields.io/github/v/tag/JubaKitiashvili/mac-storage-cleaner?label=version&style=flat-square)](https://github.com/JubaKitiashvili/mac-storage-cleaner/blob/main/CHANGELOG.md)
+[![tests](https://img.shields.io/badge/tests-84%20passing-brightgreen?style=flat-square)](#safety)
+[![platform](https://img.shields.io/badge/platform-macOS-black?style=flat-square)](#requirements)
+[![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![aitmpl](https://img.shields.io/badge/listed%20on-aitmpl.com-8A2BE2?style=flat-square)](https://aitmpl.com)
+
 **A Claude skill that safely reclaims disk space on a Mac — the trustworthy, transparent, reversible alternative to CleanMyMac and the dozens of "cleaner" apps.**
 
 The problem with one-click cleaners isn't that they don't free space — it's that you can't *see* what they're about to delete or *undo* it if they're wrong. This skill flips that. It's driven by Claude, so it reasons about every location, shows you the plan before touching anything, deletes only what provably regenerates, moves anything riskier to the **Trash** (not `rm`), and **logs every action**.
@@ -41,7 +47,7 @@ Full tiered inventory, exact reclaim commands, and edge-case notes live in [`ski
 - **No `sudo`** into system/SIP-protected areas.
 - **Every action logged** to `~/Library/Logs/mac-storage-cleaner/operations.log` (5 MB rotation) — and the scripts *refuse to delete unlogged* unless you explicitly override.
 - **Honest accounting**: partial removals reported as partial, unmeasurable sizes as `size?` (never fake zeros), survey totals exclude whitelisted items, APFS "purgeable" space explained instead of hand-waved.
-- **80 automated tests** (bats), including a 40+-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests can never touch a real machine. Audited by an independent multi-model panel before release; bash 3.2-compatible (the version macOS ships).
+- **84 automated tests** (bats), including a 47-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests can never touch a real machine. Audited by an independent multi-model panel, then battle-tested through three external bot-review rounds (Greptile + cubic — 15 valid findings fixed, each with a regression test); bash 3.2-compatible (the version macOS ships).
 
 ## Install
 
@@ -63,6 +69,10 @@ cp -R mac-storage-cleaner/skills/mac-storage-cleaner ~/.claude/skills/
 
 Download [`dist/mac-storage-cleaner.skill`](dist/mac-storage-cleaner.skill) and install it via your Claude client.
 
+### Option D — aitmpl.com (claude-code-templates)
+
+The skill is also listed in [davila7/claude-code-templates](https://github.com/davila7/claude-code-templates) under `skills/productivity/` and browsable on [aitmpl.com](https://aitmpl.com).
+
 ## Usage
 
 Once installed, it triggers automatically when you mention being out of space or wanting to clean up. Or invoke it directly:
@@ -82,14 +92,16 @@ Useful knobs (all optional):
 | `MSC_DEVICE_SUPPORT_KEEP` (default 2) | how many DeviceSupport OS versions to keep |
 | `MSC_AI_AGENTS_KEEP` (default 1) | old AI-CLI versions to keep besides the active one |
 
-## What's new in 2.0
+## What's new in 2.x
 
-- "Never" tier promoted from documentation to **mechanically enforced subtree denials** (Photos, iOS backups, Keychains, Mail/Messages, SSH/AWS/GPG keys), wired into *every* deletion loop as defense-in-depth.
-- `--dry-run`, user whitelist, fail-closed process guards, keep-N retention (DeviceSupport + AI CLIs).
+- "Never" tier promoted from documentation to **mechanically enforced subtree denials** (Photos, iOS backups, Keychains, Mail/Messages, SSH/AWS/GPG keys, `/System` and friends), wired into *every* deletion loop as defense-in-depth.
+- `--dry-run`, user whitelist, fail-closed process guards (with a metachar-proof literal process probe), keep-N retention ordered by **OS version, not mtime** (DeviceSupport + AI CLIs, symlink-pinned active version).
 - Three-stage reversible Trash chain with per-method audit logging and hard refusal of protected roots.
-- New coverage: Android Studio/SDK, Carthage, Poetry, mise, composer/gem/conda, Handoff clipboard buffers (60-min age gate), crash reports (30-day age gate), guarded Electron/Chromium app caches, browser old-version framework reporting.
+- New coverage: Android Studio/SDK, Carthage, Poetry, mise, composer/gem/conda, Handoff clipboard buffers (60-min content-aware age gate), crash reports (30-day age gate, artifact-filtered), guarded Electron/Chromium app caches, browser old-version framework reporting.
 - Honest accounting throughout: partial-removal reporting, `size?` instead of fake zeros, whitelist-aware survey totals, refuse-to-delete-unlogged, log rotation.
-- **80-test bats suite** with a property-tested dangerous-path corpus and a fake-`$HOME` isolation harness.
+- **84-test bats suite** with a property-tested dangerous-path corpus and a fake-`$HOME` isolation harness.
+
+Full version-by-version detail: [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
