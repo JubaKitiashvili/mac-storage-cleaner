@@ -196,6 +196,20 @@ EOF
   [ "$status" -eq 0 ] || { echo "REFUSED /Users/Shared child"; false; }
 }
 
+@test "log_writable rotates operations.log past 5MB to a single .1 generation (A6, mole-style)" {
+  mkdir -p "$HOME/Library/Logs/mac-storage-cleaner"
+  dd if=/dev/zero of="$HOME/Library/Logs/mac-storage-cleaner/operations.log" bs=1048576 count=6 2>/dev/null
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; log_writable && echo OK"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]] || false
+  [ -f "$HOME/Library/Logs/mac-storage-cleaner/operations.log.1" ]
+  [ -f "$HOME/Library/Logs/mac-storage-cleaner/operations.log" ]
+  sz="$(stat -f %z "$HOME/Library/Logs/mac-storage-cleaner/operations.log")"
+  [ "$sz" -eq 0 ]
+  sz1="$(stat -f %z "$HOME/Library/Logs/mac-storage-cleaner/operations.log.1")"
+  [ "$sz1" -gt 5242880 ]
+}
+
 @test "validate_target_path accepts unicode filenames under LC_ALL=C and still refuses control chars in both locales" {
   mkdir -p "$HOME/Downloads"
   run env LC_ALL=C bash -c "set -u; . '$SCRIPTS/lib.sh'; validate_target_path \"\$1\"" _ "$HOME/Downloads/café.txt"

@@ -41,6 +41,14 @@ SAFE_PATHS=(
   "/private/tmp/haste-map-*"
   "/private/tmp/react-native-packager-cache-*"
   "/private/tmp/react-packager-cache-*"
+  # iOS/Android/tooling (audit wave 2)
+  "$HOME/Library/Caches/org.carthage.CarthageKit"
+  "$HOME/Library/Caches/pypoetry"
+  "$HOME/.cache/mise"
+  "$HOME/Library/Caches/mise"
+  "$HOME/Library/Caches/Google/AndroidStudio*"
+  "$HOME/.android/cache"
+  "$HOME/.android/build-cache"
 )
 
 # --- KEEP-N tier ------------------------------------------------------------
@@ -97,6 +105,9 @@ ASK_PATHS=(
   "$HOME/Library/Caches/Cypress"
   "$HOME/Library/Caches/deno"                          # modules from arbitrary URLs; a source can 404 permanently
   "$HOME/.cache/deno"
+  "$HOME/.android/avd"                                 # emulator images+snapshots; deleting wipes emulator state
+  "$HOME/Library/Android/sdk/system-images"            # old API-level images; large, re-downloadable via sdkmanager
+  "$HOME/.orbstack"                                    # data dir includes VM state, not just cache
 )
 
 # --- NEVER tier -----------------------------------------------------------
@@ -152,6 +163,18 @@ log_op () {  # log_op <action> <size> <path> — best-effort; no-op in dry-run
 # True only if the audit log can actually be written. Callers warn the user when
 # it can't, so a run is never silently unlogged while we claim to log every deletion.
 log_writable () {
+  # Single-generation rotation (mirrors mole): once operations.log crosses
+  # 5MB, move it aside to operations.log.1 (overwriting any prior .1) before
+  # the writability probe below, so the log never grows unbounded over the
+  # life of an install. Best-effort — a failed stat/mv here (permissions,
+  # missing file) must never block the writability check that follows.
+  local f="$LOG_DIR/operations.log" sz
+  if [ -f "$f" ]; then
+    sz=$(stat -f %z "$f" 2>/dev/null)
+    if [ -n "$sz" ] && [ "$sz" -gt 5242880 ] 2>/dev/null; then
+      mv -f "$f" "$f.1" 2>/dev/null
+    fi
+  fi
   mkdir -p "$LOG_DIR" 2>/dev/null && : >> "$LOG_DIR/operations.log" 2>/dev/null
 }
 

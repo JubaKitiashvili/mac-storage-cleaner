@@ -151,3 +151,40 @@ teardown () { teardown_fake_home; }
   [[ "$output" == *"will NOT be recorded"* ]] || false
   [ ! -e "$HOME/.npm" ]
 }
+
+@test "wave-2 safe paths: android cache and pypoetry cache are cleared (A1)" {
+  mkdir -p "$HOME/.android/cache/x" "$HOME/Library/Caches/pypoetry/x"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/.android/cache" ]
+  [ ! -e "$HOME/Library/Caches/pypoetry" ]
+}
+
+@test "DiagnosticReports: crash reports older than 30 days are removed, fresh ones survive; dry-run previews only (A3)" {
+  DR="$HOME/Library/Logs/DiagnosticReports"
+  mkdir -p "$DR"
+  touch "$DR/fresh.crash"
+  touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/old.crash"
+
+  run bash "$SCRIPTS/clean-safe.sh" --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would remove"*"old.crash"*"crash report >30d"* ]] || false
+  [ -e "$DR/old.crash" ]
+  [ -e "$DR/fresh.crash" ]
+
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [ ! -e "$DR/old.crash" ]
+  [ -e "$DR/fresh.crash" ]
+}
+
+@test "deferred-skip rollup summarizes in-use and whitelisted skips (A5)" {
+  mkdir -p "$HOME/.npm/junk" "$HOME/.gradle/caches/junk"
+  printf '~/.npm\n' > "$MSC_WHITELIST_FILE"
+  make_stub pgrep 0   # gradle daemon "running" -> in-use skip
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Skipped:"* ]] || false
+  [[ "$output" == *"1 in-use"* ]] || false
+  [[ "$output" == *"1 whitelisted"* ]] || false
+}

@@ -21,6 +21,12 @@ export MSC_DRY_RUN="$DRY"
 
 total_kb=0
 skipped=0
+# Deferred-skip rollup (printed once, near the end): breaks the generic
+# `skipped` total down by REASON so the user gets one actionable line instead
+# of having to scroll every "skipped (...)" entry above to find the pattern.
+skipped_inuse=0
+skipped_wl=0
+skipped_sym=0
 # Abort-if-unlogged: a run that deletes without recording what it deleted
 # defeats the whole audit-trail promise. Refuse by default; MSC_ALLOW_UNLOGGED=1
 # is an explicit, opt-in escape hatch for the rare case the log dir genuinely
@@ -42,22 +48,26 @@ collect "${SAFE_PATHS[@]}"
   if [ -L "$p" ]; then
     echo "  skipped (symlink — removing it would only delete the link, not the data): $p"
     log_op skipped-symlink "-" "$p"
-    skipped=$((skipped + 1))
+    skipped=$((skipped + 1)); skipped_sym=$((skipped_sym + 1))
     continue
   fi
   if is_whitelisted "$p"; then
     echo "  skipped (whitelisted): $p"
     log_op skipped-whitelisted "-" "$p"
-    skipped=$((skipped + 1))
+    skipped=$((skipped + 1)); skipped_wl=$((skipped_wl + 1))
     continue
   fi
   if reason=$(guard_reason_for_path "$p"); then
     echo "  skipped ($reason): $p"
     log_op skipped-in-use "-" "$p"
-    skipped=$((skipped + 1))
+    skipped=$((skipped + 1)); skipped_inuse=$((skipped_inuse + 1))
     continue
   fi
   kb=$(size_kb "$p")
+  # size_kb can come back empty (du failed/blocked) — say so honestly instead
+  # of printing a misleading "0.0K"; ${kb:-0} below still guards the actual
+  # arithmetic under set -u and never lets an unknown size inflate the total.
+  disp=$([ -n "$kb" ] && human_kb "$kb" || echo "size?")
   if ! validate_target_path "$p"; then
     echo "  REFUSED (protected path reached deletion loop — report this): $p"
     log_op refused "-" "$p"
@@ -65,7 +75,7 @@ collect "${SAFE_PATHS[@]}"
     continue
   fi
   if [ "$DRY" = 1 ]; then
-    echo "  would remove $(human_kb "${kb:-0}")  $p"
+    echo "  would remove $disp  $p"
     total_kb=$((total_kb + ${kb:-0}))
     continue
   fi
@@ -82,12 +92,12 @@ collect "${SAFE_PATHS[@]}"
       total_kb=$((total_kb + freed)); skipped=$((skipped + 1))
     else
       echo "  skipped (macOS App Management/TCC-protected or in use): $p"
-      log_op skipped "$(human_kb "${kb:-0}")" "$p"
+      log_op skipped "$disp" "$p"
       skipped=$((skipped + 1))
     fi
   else
-    echo "  removed $(human_kb "${kb:-0}")  $p"
-    log_op removed "$(human_kb "${kb:-0}")" "$p"
+    echo "  removed $disp  $p"
+    log_op removed "$disp" "$p"
     total_kb=$((total_kb + ${kb:-0}))
   fi
 done
@@ -99,10 +109,10 @@ case "$KEEPN" in ''|*[!0-9]*) KEEPN=2 ;; esac
 for base in "${KEEP_N_PATHS[@]}"; do
   [ -d "$base" ] || continue
   if is_whitelisted "$base"; then
-    echo "  skipped (whitelisted): $base"; log_op skipped-whitelisted "-" "$base"; skipped=$((skipped+1)); continue
+    echo "  skipped (whitelisted): $base"; log_op skipped-whitelisted "-" "$base"; skipped=$((skipped+1)); skipped_wl=$((skipped_wl+1)); continue
   fi
   if reason=$(guard_reason_for_path "$base"); then
-    echo "  skipped ($reason): $base"; log_op skipped-in-use "-" "$base"; skipped=$((skipped+1)); continue
+    echo "  skipped ($reason): $base"; log_op skipped-in-use "-" "$base"; skipped=$((skipped+1)); skipped_inuse=$((skipped_inuse+1)); continue
   fi
   removed_any=0
   while IFS= read -r child; do
@@ -112,18 +122,19 @@ for base in "${KEEP_N_PATHS[@]}"; do
     [ -e "$p" ] || continue
     if [ -L "$p" ]; then
       echo "  skipped (symlink — removing it would only delete the link, not the data): $p"
-      log_op skipped-symlink "-" "$p"; skipped=$((skipped+1)); continue
+      log_op skipped-symlink "-" "$p"; skipped=$((skipped+1)); skipped_sym=$((skipped_sym+1)); continue
     fi
     if is_whitelisted "$p"; then
-      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); skipped_wl=$((skipped_wl+1)); continue
     fi
     kb=$(size_kb "$p")
+    disp=$([ -n "$kb" ] && human_kb "$kb" || echo "size?")
     if ! validate_target_path "$p"; then
       echo "  REFUSED (protected path reached deletion loop — report this): $p"
       log_op refused "-" "$p"; skipped=$((skipped+1)); continue
     fi
     if [ "$DRY" = 1 ]; then
-      echo "  would remove $(human_kb "${kb:-0}")  $p"
+      echo "  would remove $disp  $p"
       total_kb=$((total_kb + ${kb:-0})); removed_any=1; continue
     fi
     rm -rf "$p" 2>/dev/null
@@ -135,10 +146,10 @@ for base in "${KEEP_N_PATHS[@]}"; do
         log_op partial "$(human_kb "$freed")" "$p"
         total_kb=$((total_kb + freed)); skipped=$((skipped+1))
       else
-        echo "  skipped (protected or in use): $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+        echo "  skipped (protected or in use): $p"; log_op skipped "$disp" "$p"; skipped=$((skipped+1))
       fi
     else
-      echo "  removed $(human_kb "${kb:-0}")  $p"; log_op removed "$(human_kb "${kb:-0}")" "$p"
+      echo "  removed $disp  $p"; log_op removed "$disp" "$p"
       total_kb=$((total_kb + ${kb:-0})); removed_any=1
     fi
   done <<EOF
@@ -154,7 +165,7 @@ for spec in "${AI_AGENT_SPECS[@]}"; do
   root="${spec%%|*}"; rest="${spec#*|}"; label="${rest%%|*}"; link="${rest#*|}"
   [ -d "$root" ] || continue
   if is_whitelisted "$root"; then
-    echo "  skipped (whitelisted): $root"; log_op skipped-whitelisted "-" "$root"; skipped=$((skipped+1)); continue
+    echo "  skipped (whitelisted): $root"; log_op skipped-whitelisted "-" "$root"; skipped=$((skipped+1)); skipped_wl=$((skipped_wl+1)); continue
   fi
   if ! active=$(resolve_active_version_dir "$root" "$link"); then
     echo "  skipped (active version unknown): $label"
@@ -170,18 +181,19 @@ for spec in "${AI_AGENT_SPECS[@]}"; do
     [ -e "$p" ] || continue
     if [ -L "$p" ]; then
       echo "  skipped (symlink — removing it would only delete the link, not the data): $p"
-      log_op skipped-symlink "-" "$p"; skipped=$((skipped+1)); continue
+      log_op skipped-symlink "-" "$p"; skipped=$((skipped+1)); skipped_sym=$((skipped_sym+1)); continue
     fi
     if is_whitelisted "$p"; then
-      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); skipped_wl=$((skipped_wl+1)); continue
     fi
     kb=$(size_kb "$p")
+    disp=$([ -n "$kb" ] && human_kb "$kb" || echo "size?")
     if ! validate_target_path "$p"; then
       echo "  REFUSED (protected path reached deletion loop — report this): $p"
       log_op refused "-" "$p"; skipped=$((skipped+1)); continue
     fi
     if [ "$DRY" = 1 ]; then
-      echo "  would remove $(human_kb "${kb:-0}")  $p ($label old version)"
+      echo "  would remove $disp  $p ($label old version)"
       total_kb=$((total_kb + ${kb:-0})); continue
     fi
     rm -rf "$p" 2>/dev/null
@@ -193,11 +205,11 @@ for spec in "${AI_AGENT_SPECS[@]}"; do
         log_op partial "$(human_kb "$freed")" "$p"
         total_kb=$((total_kb + freed)); skipped=$((skipped+1))
       else
-        echo "  skipped: $p"; log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped+1))
+        echo "  skipped: $p"; log_op skipped "$disp" "$p"; skipped=$((skipped+1))
       fi
     else
-      echo "  removed $(human_kb "${kb:-0}")  $p ($label old version)"
-      log_op removed "$(human_kb "${kb:-0}")" "$p"; total_kb=$((total_kb + ${kb:-0}))
+      echo "  removed $disp  $p ($label old version)"
+      log_op removed "$disp" "$p"; total_kb=$((total_kb + ${kb:-0}))
     fi
   done <<EOF
 $(ls -1t "$root" 2>/dev/null)
@@ -214,27 +226,141 @@ if [ -d "$PB" ] && [ ! -L "$PB" ] && ! is_whitelisted "$PB"; then
     [ -e "$p" ] || continue
     [ -L "$p" ] && continue
     if is_whitelisted "$p"; then
-      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); continue
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); skipped_wl=$((skipped_wl+1)); continue
     fi
     kb=$(size_kb "$p")
+    disp=$([ -n "$kb" ] && human_kb "$kb" || echo "size?")
     if ! validate_target_path "$p"; then
       echo "  REFUSED (protected path reached deletion loop — report this): $p"
       log_op refused "-" "$p"; skipped=$((skipped+1)); continue
     fi
     if [ "$DRY" = 1 ]; then
-      echo "  would remove $(human_kb "${kb:-0}")  $p (Handoff clipboard buffer)"
+      echo "  would remove $disp  $p (Handoff clipboard buffer)"
       total_kb=$((total_kb + ${kb:-0})); continue
     fi
     rm -rf "$p" 2>/dev/null
     if [ -e "$p" ]; then
       echo "  skipped (protected or in use): $p"
-      log_op skipped "$(human_kb "${kb:-0}")" "$p"; skipped=$((skipped + 1))
+      log_op skipped "$disp" "$p"; skipped=$((skipped + 1))
     else
-      echo "  removed $(human_kb "${kb:-0}")  $p (Handoff clipboard buffer)"
-      log_op removed "$(human_kb "${kb:-0}")" "$p"; total_kb=$((total_kb + ${kb:-0}))
+      echo "  removed $disp  $p (Handoff clipboard buffer)"
+      log_op removed "$disp" "$p"; total_kb=$((total_kb + ${kb:-0}))
     fi
   done <<EOF
 $(find "$PB" -mindepth 1 -maxdepth 1 -mmin +60 2>/dev/null)
+EOF
+fi
+
+# Crash reports: apps/macOS write .crash/.ips files here on every crash and
+# never prune old ones. Age-gated (30+ days) the same way as Handoff above —
+# a recent crash report may still be needed (e.g. for a bug report), so only
+# stale ones are cleared. Same shape as the Handoff section: base-level
+# symlink/whitelist gate the whole section, per-child symlink/whitelist gate
+# each report.
+DR="$HOME/Library/Logs/DiagnosticReports"
+if [ -d "$DR" ] && [ ! -L "$DR" ] && ! is_whitelisted "$DR"; then
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    [ -e "$p" ] || continue
+    [ -L "$p" ] && continue
+    if is_whitelisted "$p"; then
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); skipped_wl=$((skipped_wl+1)); continue
+    fi
+    kb=$(size_kb "$p")
+    disp=$([ -n "$kb" ] && human_kb "$kb" || echo "size?")
+    if ! validate_target_path "$p"; then
+      echo "  REFUSED (protected path reached deletion loop — report this): $p"
+      log_op refused "-" "$p"; skipped=$((skipped+1)); continue
+    fi
+    if [ "$DRY" = 1 ]; then
+      echo "  would remove $disp  $p (crash report >30d)"
+      total_kb=$((total_kb + ${kb:-0})); continue
+    fi
+    rm -rf "$p" 2>/dev/null
+    if [ -e "$p" ]; then
+      echo "  skipped (protected or in use): $p"
+      log_op skipped "$disp" "$p"; skipped=$((skipped + 1))
+    else
+      echo "  removed $disp  $p (crash report >30d)"
+      log_op removed "$disp" "$p"; total_kb=$((total_kb + ${kb:-0}))
+    fi
+  done <<EOF
+$(find "$DR" -mindepth 1 -maxdepth 1 -mtime +30 2>/dev/null)
+EOF
+fi
+
+# Electron/Chromium-style app caches: survey.sh has long reported these
+# (Cache/Code Cache/GPUCache/DawnWebGPUCache directly under an app's own
+# Application Support folder); graduate detection into guarded auto-deletion.
+# -mindepth 2 -maxdepth 2 keeps this to DIRECT CHILD app dirs only (e.g.
+# "Claude/Cache") — never something deeper inside a browser profile, which
+# stays manual (see catalog).
+AS="$HOME/Library/Application Support"
+if [ -d "$AS" ] && [ ! -L "$AS" ]; then
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    [ -e "$p" ] || continue
+    # app = the first path component after "Application Support/" (name
+    # only — may contain spaces, e.g. "Microsoft Teams"). Newline-safe via
+    # the heredoc-fed `while read` below, not word-splitting.
+    rest="${p#"$AS"/}"
+    app="${rest%%/*}"
+    appdir="$AS/$app"
+    if [ -L "$p" ] || [ -L "$appdir" ]; then
+      echo "  skipped (symlink — removing it would only delete the link, not the data): $p"
+      log_op skipped-symlink "-" "$p"; skipped=$((skipped+1)); skipped_sym=$((skipped_sym+1)); continue
+    fi
+    if is_whitelisted "$p" || is_whitelisted "$appdir"; then
+      echo "  skipped (whitelisted): $p"; log_op skipped-whitelisted "-" "$p"; skipped=$((skipped+1)); skipped_wl=$((skipped_wl+1)); continue
+    fi
+    # Process guard, fail-closed (tri-state): an Electron app rewrites these
+    # caches live, so a running (or unreadable-process-table) owner must
+    # block deletion, not just a known-idle one. `pgrep -x` against the app
+    # DIRECTORY name is an approximation — a real process name doesn't always
+    # match its Application Support folder name verbatim — but that's
+    # accepted here because the approximation only ever costs an extra skip
+    # (fail-closed), never a wrong deletion.
+    if command -v pgrep >/dev/null 2>&1; then
+      if pgrep -x "$app" >/dev/null 2>&1; then guard_rc=0
+      else guard_rc=$?; [ "$guard_rc" -eq 1 ] || guard_rc=2; fi
+    else
+      guard_rc=2
+    fi
+    if [ "$guard_rc" != 1 ]; then
+      echo "  skipped (app running or state unknown): $p"
+      log_op skipped-in-use "-" "$p"; skipped=$((skipped+1)); skipped_inuse=$((skipped_inuse+1)); continue
+    fi
+    kb=$(size_kb "$p")
+    disp=$([ -n "$kb" ] && human_kb "$kb" || echo "size?")
+    if ! validate_target_path "$p"; then
+      echo "  REFUSED (protected path reached deletion loop — report this): $p"
+      log_op refused "-" "$p"; skipped=$((skipped+1)); continue
+    fi
+    if [ "$DRY" = 1 ]; then
+      echo "  would remove $disp  $p"
+      total_kb=$((total_kb + ${kb:-0})); continue
+    fi
+    if ! rm -rf "$p" 2>/dev/null; then
+      chmod -R u+w "$p" 2>/dev/null
+      rm -rf "$p" 2>/dev/null
+    fi
+    if [ -e "$p" ]; then
+      kb_after=$(size_kb "$p")
+      if [ -n "$kb_after" ] && [ "${kb_after:-0}" -lt "${kb:-0}" ]; then
+        freed=$(( ${kb:-0} - kb_after ))
+        echo "  partially removed ($(human_kb "$freed") freed, $(human_kb "$kb_after") blocked): $p"
+        log_op partial "$(human_kb "$freed")" "$p"
+        total_kb=$((total_kb + freed)); skipped=$((skipped+1))
+      else
+        echo "  skipped (macOS App Management/TCC-protected or in use): $p"
+        log_op skipped "$disp" "$p"; skipped=$((skipped+1))
+      fi
+    else
+      echo "  removed $disp  $p"
+      log_op removed "$disp" "$p"; total_kb=$((total_kb + ${kb:-0}))
+    fi
+  done <<EOF
+$(find "$AS" -mindepth 2 -maxdepth 2 -type d \( -name Cache -o -name "Code Cache" -o -name GPUCache -o -name DawnWebGPUCache \) 2>/dev/null)
 EOF
 fi
 
@@ -288,6 +414,22 @@ else
   echo "Approx. reclaimed from cache deletions: $(human_kb "$total_kb") (brew/simulator cleanup above frees more, not counted here)"
 fi
 [ "$skipped" -gt 0 ] && echo "($skipped path(s) skipped — delete via Finder if you need them gone.)"
+# Deferred-skip rollup: one actionable line breaking the total down by WHY
+# something was skipped, instead of making the user scroll every line above
+# to spot the pattern. Only non-zero parts are shown, comma-joined.
+skip_parts=()
+[ "$skipped_inuse" -gt 0 ] && skip_parts+=("$skipped_inuse in-use (quit the apps and re-run)")
+[ "$skipped_wl" -gt 0 ] && skip_parts+=("$skipped_wl whitelisted")
+[ "$skipped_sym" -gt 0 ] && skip_parts+=("$skipped_sym symlinked")
+if [ "${#skip_parts[@]}" -gt 0 ]; then
+  rollup="${skip_parts[0]}"
+  i=1
+  while [ "$i" -lt "${#skip_parts[@]}" ]; do
+    rollup="$rollup, ${skip_parts[$i]}"
+    i=$((i + 1))
+  done
+  echo "Skipped: $rollup."
+fi
 echo
 echo "Free space now:"
 if [ -d /System/Volumes/Data ]; then df -h /System/Volumes/Data 2>/dev/null | sed -n '1p;$p'; else df -h /; fi

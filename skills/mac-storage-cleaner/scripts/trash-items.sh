@@ -54,7 +54,10 @@ for p in "$@"; do
     refused=$((refused + 1))
     continue
   fi
-  sz=$(human_kb "$(size_kb "$p")")
+  # size_kb can come back empty (du failed/blocked) — say so honestly instead
+  # of printing a misleading "0.0K".
+  kb=$(size_kb "$p")
+  sz=$([ -n "$kb" ] && human_kb "$kb" || echo "size?")
   if [ "$DRY" = 1 ]; then
     echo "  would trash $sz  $p"
     continue

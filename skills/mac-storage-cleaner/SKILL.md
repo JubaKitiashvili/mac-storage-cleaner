@@ -174,6 +174,15 @@ Read `references/cache-catalog.md` for the full tiered inventory and gotchas. Th
   minutes** — never delete fresher ones, an in-flight Universal Clipboard sync
   may be using them.
 
+## Environment variables
+
+- `MSC_DRY_RUN` — set to `1` to force preview mode (same as `--dry-run`) on `clean-safe.sh`, and to make `trash-items.sh` preview instead of trashing.
+- `MSC_WHITELIST_FILE` — override the whitelist path (default `~/.config/mac-storage-cleaner/whitelist`).
+- `MSC_TRASH_BIN` — override the `trash` binary `trash_path` tries first (default `/usr/bin/trash`).
+- `MSC_DEVICE_SUPPORT_KEEP` (default `2`) — how many newest Xcode DeviceSupport versions to keep per platform.
+- `MSC_AI_AGENTS_KEEP` (default `1`) — how many newest non-active AI CLI versions to keep alongside the active (symlink-pinned) one.
+- `MSC_ALLOW_UNLOGGED` — set to `1` to let a destructive run proceed even when the audit log can't be written (default: refuse, exit 3).
+
 ## Tests
 
 `bats tests/` from the repo root (`brew install bats-core`). Every test runs

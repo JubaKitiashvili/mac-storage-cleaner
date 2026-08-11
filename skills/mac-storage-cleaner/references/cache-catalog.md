@@ -41,12 +41,25 @@ license file, an unpushable archive, or someone's only local backup is not.
 | `~/Library/Caches/Homebrew` + downloads | brew bottle/download cache | `brew cleanup -s --prune=all` | next `brew install` |
 | `~/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard` | Handoff / Universal Clipboard transfer buffers; `useractivityd` is supposed to prune these itself but can leave many GB behind (mole #1178) | `rm -rf` **only items older than 60 minutes** (age-gated — an in-flight Universal Clipboard sync must never be cut) | automatically as new Handoff transfers occur |
 | `/private/tmp/{metro-*,haste-map-*,react-native-packager-cache-*,react-packager-cache-*}` | Metro/RN temp | `rm -rf` | next Metro start (bare `react-*` is deliberately NOT safe — it would match user clones like `react-native-fork`) |
+| `~/Library/Caches/org.carthage.CarthageKit` | Carthage (third iOS dependency manager, alongside CocoaPods/SwiftPM above) build/download cache | `rm -rf` | next `carthage bootstrap`/`carthage update` |
+| `~/Library/Caches/pypoetry` | Poetry (Python) package/artifact cache | `rm -rf` or `poetry cache clear --all .` | next `poetry install` |
+| `~/.cache/mise` | mise (asdf-style tool version manager) download/install cache | `rm -rf` | next `mise install` |
+| `~/Library/Caches/mise` | mise's macOS cache dir (separate from `~/.cache/mise` above) | `rm -rf` | next `mise install` |
+| `~/Library/Caches/Google/AndroidStudio*` | Android Studio IDE caches (versioned folder, hence the glob) | `rm -rf` | automatically (IDE reindexes on next launch) |
+| `~/.android/cache` | Android SDK/build-tool cache | `rm -rf` | next Android build |
+| `~/.android/build-cache` | Android Gradle plugin build cache | `rm -rf` | next Android build |
+| `~/Library/Logs/DiagnosticReports` | crash reports (`.crash`/`.ips`); macOS/apps never prune these themselves | `rm -rf` (clean-safe.sh removes only items **older than 30 days**, age-gated like Handoff above) | new reports keep accumulating; a report younger than 30 days is kept in case it's still needed for a bug report |
 | `~/Library/Caches/<app>` (generic, NOT on the list above) | most per-app caches | prefer `trash-items.sh` (reversible); `rm -rf` only once you've confirmed it's a pure cache | usually automatic — but some apps keep the only local copy of downloaded content or a token here, so verify before deleting |
 
 **Browser & Electron app caches (safe, but quit the app first):** delete only the
 cache *subfolders* — never the whole app-support folder, which holds real data.
 - Electron apps (Slack, Discord, VS Code, Cursor, Windsurf, Teams, Notion, …):
   `~/Library/Application Support/<App>/{Cache,Code Cache,GPUCache,DawnWebGPUCache}`.
+  `clean-safe.sh` now clears these four cache subfolders **automatically** for
+  every direct child of `~/Library/Application Support` (audit wave 2) —
+  guarded by a fail-closed `pgrep -x` check on the app-folder name (running or
+  unknown state ⇒ skip) so a live app's cache is never touched mid-write.
+  Browsers' profile caches (below) remain manual/unchanged.
 - Chromium browsers (Chrome, Arc, Brave, Edge, Vivaldi):
   `~/Library/Application Support/<Browser>/<Profile>/{Cache,Code Cache,Service Worker/CacheStorage}`.
   Clearing `Service Worker/CacheStorage` drops sites' offline data (minor).
@@ -72,6 +85,9 @@ cache *subfolders* — never the whole app-support folder, which holds real data
 | `~/.gradle/wrapper/dists` | downloaded Gradle distributions | re-download; ask. |
 | `~/.m2/repository` | Maven local repo | cache-like but large; **never** `~/.m2` itself — `settings.xml` lives at its root. |
 | `~/Library/Caches/JetBrains`, `~/Library/Application Support/JetBrains/*/caches` | IDE indexes | forces full reindex; recommend, don't auto. |
+| `~/.android/avd` | emulator images + snapshots — deleting wipes that emulator's state | advise per-AVD review, then `avdmanager delete avd -n <name>` for ones no longer needed |
+| `~/Library/Android/sdk/system-images` | old Android API-level system images | `sdkmanager --uninstall "system-images;android-XX;..."` for API levels no longer targeted |
+| `~/.orbstack` | verify layout before advising — this data dir includes VM state, not just cache | prefer OrbStack's own prune commands (e.g. its CLI/GUI cleanup) over manual `rm` |
 | project `node_modules` / `target/` / `build/` | per-project, huge in aggregate | see stale-project sweep below. |
 
 ## Never tier (warn only)
@@ -150,11 +166,18 @@ rebuild via install/build) but can be surprising. List, sorted by size, without 
 
 ```bash
 find ~/Desktop ~/Documents ~/Developer ~/Projects ~/code -type d \
-  \( -name node_modules -o -name target -o -name .next -o -name build -o -name Pods \) \
+  \( -name node_modules -o -name target -o -name .next -o -name build -o -name Pods \
+     -o -name .expo -o -name .cxx -o -name .turbo -o -name coverage -o -name .venv -o -name __pycache__ \) \
   -prune 2>/dev/null | while read -r d; do du -sh "$d"; done | sort -rh | head -30
 ```
 
 `npx npkill` is the interactive equivalent if the user prefers a picker.
+
+Any directory containing a valid `CACHEDIR.TAG` signature file (first line
+`Signature: 8a477f597d28d172789f06886806bc55`, per the [Cache Directory
+Tagging Specification](https://bford.info/cachedir/)) is cache **by
+declaration** from the tool that created it — safe to include in sweeps like
+this one even if its name isn't on the list above.
 
 ## Gotchas
 

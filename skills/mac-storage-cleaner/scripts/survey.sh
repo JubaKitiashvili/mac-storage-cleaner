@@ -56,7 +56,7 @@ echo "Only the vetted safe list above is auto-deleted; these are for you to revi
 du -sh "$HOME/Library/Caches/"* 2>/dev/null | sort -rh | head -12
 echo
 
-echo "===== App caches — Electron & browsers (safe; quit the app first) ====="
+echo "===== App caches — Electron & browsers (clean-safe clears these automatically when the app isn't running) ====="
 # Electron-style cache subfolders (depth<=2) + known browser profile caches.
 # Capture the listing once, so the "found little" message reflects what was
 # ACTUALLY shown (incl. the deeper browser-profile caches) — not a re-run of a
@@ -87,6 +87,12 @@ else
 fi
 d="$HOME/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"
 [ -f "$d" ] && stat -f '  Docker.raw last modified: %Sm' "$d" 2>/dev/null
+# Read-only; gated on xcode-select -p (same reasoning as clean-safe.sh) so a
+# non-developer Mac with no toolchain selected never triggers simctl at all.
+if xcode-select -p >/dev/null 2>&1; then
+  rtcount=$(xcrun simctl list runtimes 2>/dev/null | grep -c " - ")
+  [ "${rtcount:-0}" -gt 0 ] && echo "  iOS/watchOS/tvOS simulator runtimes installed: $rtcount — each 5-10GB; remove unused: xcrun simctl runtime list / delete <id>"
+fi
 echo
 
 echo "===== NEVER auto-delete — user data (reported for awareness only) ====="
