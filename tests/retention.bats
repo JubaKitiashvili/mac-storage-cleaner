@@ -247,3 +247,30 @@ EOF
   [ "$first" = "1.0.117" ]
   [ "$last" = "1.0.2" ]
 }
+
+# cubic P2: 5-component DeviceSupport names ("18.5.1 (22G100)" = 18,5,1,22,100)
+# used to tie on the old 4-component key and fall to a lexical tie-break that
+# put "22G100" below "22G86" (1<8) — a newer build classified older. Depth 8
+# fixes it.
+@test "_version_sort_desc fallback: 5-component names order by numeric key, not lexically (22G100 before 22G86)" {
+  stub_sort_without_dash_v
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; printf '18.5.1 (22G100)\n18.5.1 (22G86)\n' | _version_sort_desc"
+  [ "$status" -eq 0 ]
+  first=$(printf '%s\n' "$output" | head -n1)
+  [ "$first" = "18.5.1 (22G100)" ]
+}
+
+@test "_version_sort_desc fallback: equal 8-component keys still break ties lexically (22G76 before 22F76)" {
+  stub_sort_without_dash_v
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; printf '18.5 (22G76)\n18.5 (22F76)\n' | _version_sort_desc"
+  [ "$status" -eq 0 ]
+  first=$(printf '%s\n' "$output" | head -n1)
+  [ "$first" = "18.5 (22G76)" ]
+}
+
+@test "_version_sort_desc fallback fails closed on 9th-component overflow: emits nothing for the whole directory" {
+  stub_sort_without_dash_v
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; printf '1.0.117\n1.2.3.4.5.6.7.8.9\n' | _version_sort_desc"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

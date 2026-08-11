@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.6 — 2026-08-11
+
+Fix for a cubic P2 finding, fallback path only: `_version_sort_desc`'s awk
+key only used the first 4 numeric components, so names with more (e.g.
+DeviceSupport's "18.5.1 (22G100)" = 18,5,1,22,100) tied on the key and fell
+to a lexical tie-break where "22G100" sorted below "22G86" — a newer build
+misclassified as older and deletable by keep-N. Key depth is now 8
+components (covers every realistic version string with headroom), and any
+name with a 9th+ numeric run left over makes the fallback fail closed: it
+emits nothing for that directory rather than risk an ordering it can't
+guarantee. The lexical tie-break still applies when two 8-component keys are
+exactly equal (e.g. "22G76" vs "22F76"), which now only happens when the
+numeric content is genuinely identical.
+
 ## 2.0.5 — 2026-08-11
 
 Portable fallback for `version_sorted_children`'s retention ordering: it used
