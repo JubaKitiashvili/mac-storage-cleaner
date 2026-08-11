@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.5 — 2026-08-11
+
+Portable fallback for `version_sorted_children`'s retention ordering: it used
+to fail CLOSED (print nothing, keep everything, silently) when `sort -V`
+looked unsupported. That's now replaced with a new `_version_sort_desc`
+helper that falls back to an awk-built lexical key (first 4 numeric
+components, zero-padded) sorted with plain `sort -r` — same version order as
+`sort -rV`, no silent no-op — so retention works even on a hypothetical
+`sort` without `-V` support.
+
 ## 2.0.4 — 2026-08-11
 
 Fix for a cubic P3 finding (PR #792): `_msc_remove_old_report`'s doc comment

@@ -211,3 +211,39 @@ mk_claude () {
   run bash "$SCRIPTS/clean-safe.sh"
   [ -d "$VR/1.0.10" ]
 }
+
+# A `sort` without -V support must not make retention silently no-op: the
+# awk-key fallback in _version_sort_desc has to reproduce the SAME outcome
+# as the primary `sort -rV` path (version order beats mtime).
+stub_sort_without_dash_v () {
+  STUB_DIR="${STUB_DIR:-$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc-stub.XXXXXX")}"
+  cat > "$STUB_DIR/sort" <<'EOF'
+#!/bin/bash
+case "$*" in *-V*) exit 2;; esac
+exec /usr/bin/sort "$@"
+EOF
+  chmod +x "$STUB_DIR/sort"
+  export PATH="$STUB_DIR:$PATH"
+}
+
+@test "fallback path (sort -V unsupported) still keeps the 2 newest DeviceSupport versions by version order (portable fallback)" {
+  mk_ds
+  stub_sort_without_dash_v
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [ -d "$DS/18.5 (22F76)" ]
+  [ -d "$DS/17.5 (21F79)" ]
+  [ ! -e "$DS/16.0 (20A362)" ]
+  [ ! -e "$DS/17.0 (21A326)" ]
+  [[ "$output" == *"kept 2 newest"* ]]
+}
+
+@test "_version_sort_desc fallback orders semver components correctly (1.0.117 first, 1.0.2 last)" {
+  stub_sort_without_dash_v
+  run bash -c "set -u; . '$SCRIPTS/lib.sh'; printf '1.0.117\n1.0.2\n1.0.20\n' | _version_sort_desc"
+  [ "$status" -eq 0 ]
+  first=$(printf '%s\n' "$output" | head -n1)
+  last=$(printf '%s\n' "$output" | tail -n1)
+  [ "$first" = "1.0.117" ]
+  [ "$last" = "1.0.2" ]
+}
