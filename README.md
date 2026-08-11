@@ -32,11 +32,16 @@ Full tiered inventory, exact reclaim commands, and edge-case notes live in [`ski
 ## Safety
 
 - **Auto-deletes only pure caches** on an explicit allowlist — never your data.
-- **Reversible by default** for everything else (Trash via Finder, restorable until emptied).
-- **Never touches** iOS backups, Photos/Mail/Messages data, keychains, credentials, whole app-support folders, or Time Machine snapshots — it reports their size and leaves them alone.
+- **The "never" tier is enforced in code, not just policy**: iOS backups, Photos libraries, Keychains, Mail/Messages data, `~/.ssh`/`~/.aws`/`~/.gnupg` are *mechanically refused* by the deletion validator — even if the reasoning layer were ever wrong, the scripts won't touch them. A property test guarantees the allowlist and the deny list can never overlap.
+- **Reversible by default** for everything else — a three-stage Trash chain (`/usr/bin/trash` → Finder → same-volume move), restorable until emptied.
+- **Preview first**: `--dry-run` shows exactly what a run would do — guards and whitelist apply identically in preview and reality.
+- **Fail-closed process guards**: caches whose owner may be live (Xcode toolchain, Gradle daemon, running Electron apps) are skipped, and "can't tell" always means "skip".
+- **Keeps what you still need**: DeviceSupport symbol caches keep the 2 newest OS versions; auto-updating AI CLIs (Claude Code, Cursor, Copilot) keep the active version — pinned via its launcher symlink, never guessed from timestamps.
+- **Your whitelist wins**: one path per line in `~/.config/mac-storage-cleaner/whitelist` protects it (and everything under it) from every automatic tier, case-insensitively.
 - **No `sudo`** into system/SIP-protected areas.
-- **Every action logged** to `~/Library/Logs/mac-storage-cleaner/operations.log`.
-- Reviewed adversarially (multi-agent code review) before release; bash 3.2-compatible (the version macOS ships), handles read-only files, TCC-protected paths, and a fresh Mac with no caches.
+- **Every action logged** to `~/Library/Logs/mac-storage-cleaner/operations.log` (5 MB rotation) — and the scripts *refuse to delete unlogged* unless you explicitly override.
+- **Honest accounting**: partial removals reported as partial, unmeasurable sizes as `size?` (never fake zeros), survey totals exclude whitelisted items, APFS "purgeable" space explained instead of hand-waved.
+- **68 automated tests** (bats), including a 40+-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests can never touch a real machine. Audited by an independent multi-model panel before release; bash 3.2-compatible (the version macOS ships).
 
 ## Install
 
@@ -67,6 +72,24 @@ Once installed, it triggers automatically when you mention being out of space or
 ```
 
 Then just talk to it: *"free up space, but ask me before deleting anything big."*
+
+Useful knobs (all optional):
+
+| | |
+|---|---|
+| `--dry-run` (or `MSC_DRY_RUN=1`) | full preview, zero deletions, zero log writes |
+| `~/.config/mac-storage-cleaner/whitelist` | paths/globs to always keep (case-insensitive, protects subtrees) |
+| `MSC_DEVICE_SUPPORT_KEEP` (default 2) | how many DeviceSupport OS versions to keep |
+| `MSC_AI_AGENTS_KEEP` (default 1) | old AI-CLI versions to keep besides the active one |
+
+## What's new in 2.0
+
+- "Never" tier promoted from documentation to **mechanically enforced subtree denials** (Photos, iOS backups, Keychains, Mail/Messages, SSH/AWS/GPG keys), wired into *every* deletion loop as defense-in-depth.
+- `--dry-run`, user whitelist, fail-closed process guards, keep-N retention (DeviceSupport + AI CLIs).
+- Three-stage reversible Trash chain with per-method audit logging and hard refusal of protected roots.
+- New coverage: Android Studio/SDK, Carthage, Poetry, mise, composer/gem/conda, Handoff clipboard buffers (60-min age gate), crash reports (30-day age gate), guarded Electron/Chromium app caches, browser old-version framework reporting.
+- Honest accounting throughout: partial-removal reporting, `size?` instead of fake zeros, whitelist-aware survey totals, refuse-to-delete-unlogged, log rotation.
+- **68-test bats suite** with a property-tested dangerous-path corpus and a fake-`$HOME` isolation harness.
 
 ## Requirements
 
