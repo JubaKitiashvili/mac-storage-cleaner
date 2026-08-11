@@ -4,10 +4,16 @@ load test_helper
 setup ()    { setup_fake_home; make_stub brew 1; make_stub xcode-select 1; make_stub pgrep 1; }
 teardown () { teardown_fake_home; }
 
-mk_ds () {   # four version dirs, mtimes 4d..1d old; "18.5 (22F76)" newest
+mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
+  # version order (G2): "16.0" — the LOWEST version — gets the NEWEST mtime
+  # (1 hour ago), while "18.5" — the HIGHEST version — has an OLD mtime (1
+  # day ago). Retention must still keep the 2 HIGHEST VERSIONS (17.5, 18.5)
+  # and remove the 2 lowest (16.0, 17.0), proving version-ordering beats
+  # mtime — a naive mtime-based scan would instead keep 16.0 (newest mtime)
+  # and 18.5, removing 17.0 and 17.5, which the assertions below would catch.
   DS="$HOME/Library/Developer/Xcode/iOS DeviceSupport"
   mkdir -p "$DS/16.0 (20A362)" "$DS/17.0 (21A326)" "$DS/17.5 (21F79)" "$DS/18.5 (22F76)"
-  touch -t "$(date -v-4d +%Y%m%d%H%M)" "$DS/16.0 (20A362)"
+  touch -t "$(date -v-1H +%Y%m%d%H%M)" "$DS/16.0 (20A362)"
   touch -t "$(date -v-3d +%Y%m%d%H%M)" "$DS/17.0 (21A326)"
   touch -t "$(date -v-2d +%Y%m%d%H%M)" "$DS/17.5 (21F79)"
   touch -t "$(date -v-1d +%Y%m%d%H%M)" "$DS/18.5 (22F76)"
@@ -98,6 +104,25 @@ mk_ds () {   # four version dirs, mtimes 4d..1d old; "18.5 (22F76)" newest
   [ -d "$DS/16.0 (oldest)/protected" ]        # blocked content survives
   [ ! -e "$DS/16.0 (oldest)/removable-file" ] # unblocked content still freed
   [ -d "$DS/17.0 (mid)" ]; [ -d "$DS/18.0 (newest)" ]   # 2 newest still kept
+}
+
+# C1: [ -d "$base" ] alone FOLLOWS a symlink, so a symlinked retention root
+# must be refused explicitly — otherwise the loop would enumerate and delete
+# the TARGET's version children right through the link.
+@test "symlinked DeviceSupport base is skipped entirely — nothing under the target is touched (C1)" {
+  REAL="$HOME/real-device-support"
+  mkdir -p "$REAL/16.0 (20A362)" "$REAL/17.0 (21A326)" "$REAL/17.5 (21F79)" "$REAL/18.5 (22F76)"
+  DS="$HOME/Library/Developer/Xcode/iOS DeviceSupport"
+  mkdir -p "$(dirname "$DS")"
+  ln -s "$REAL" "$DS"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skipped (symlink base)"* ]] || false
+  [ -d "$REAL/16.0 (20A362)" ]
+  [ -d "$REAL/17.0 (21A326)" ]
+  [ -d "$REAL/17.5 (21F79)" ]
+  [ -d "$REAL/18.5 (22F76)" ]
+  [ -L "$DS" ]
 }
 
 @test "survey shows the actual MSC_DEVICE_SUPPORT_KEEP value, not a hardcoded 2 (preview == reality)" {

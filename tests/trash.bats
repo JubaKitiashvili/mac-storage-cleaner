@@ -73,6 +73,25 @@ EOF
   [ -L "$HOME/.npm" ]
 }
 
+# C6: a dry-run mixing one valid (previewed) path with one refused path must
+# exit 0 — the valid path WOULD have moved, so this isn't an all-refused run.
+@test "trash-items.sh dry-run: one valid + one refused path exits 0, both reported (C6)" {
+  mkdir -p "$HOME/Downloads/valid-item" "$HOME/Library"
+  MSC_DRY_RUN=1 run bash "$SCRIPTS/trash-items.sh" "$HOME/Downloads/valid-item" "$HOME/Library"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would trash"*"valid-item"* ]] || false
+  [[ "$output" == *"REFUSED"*"$HOME/Library"* ]] || false
+  [ -d "$HOME/Downloads/valid-item" ]
+}
+
+# C6: an all-refused dry-run (nothing previewed, nothing moved) still exits 2.
+@test "trash-items.sh dry-run: all-refused paths still exit 2 (C6)" {
+  mkdir -p "$HOME/Library" "$HOME/Documents"
+  MSC_DRY_RUN=1 run bash "$SCRIPTS/trash-items.sh" "$HOME/Library" "$HOME/Documents"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REFUSED"* ]] || false
+}
+
 @test "trash_path on a symlink skips Finder entirely and uses mv, moving only the link (F4b)" {
   mkdir -p "$HOME/real-target"
   ln -s "$HOME/real-target" "$HOME/link-to-target"

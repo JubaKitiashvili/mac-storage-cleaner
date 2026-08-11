@@ -111,6 +111,30 @@ teardown () { teardown_fake_home; }
   grep -q "skipped" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }
 
+# C2: the -mmin +60 top-level age gate only looks at the CANDIDATE dir's own
+# mtime — a directory's mtime doesn't necessarily bump every time a file
+# inside it is written, so an old-looking dir can still be mid-transfer.
+@test "Handoff pasteboard: a dir with an old dir-mtime but one fresh file inside survives (content-aware age gate, C2)" {
+  PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
+  mkdir -p "$PB/mixed-item"
+  touch "$PB/mixed-item/fresh-file"    # default mtime: just now (< 60min)
+  touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/mixed-item"   # dir itself looks old
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [ -d "$PB/mixed-item" ]
+  [ -e "$PB/mixed-item/fresh-file" ]
+}
+
+@test "Handoff pasteboard: a fully-old dir (no fresh descendants) is still removed (C2 regression)" {
+  PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
+  mkdir -p "$PB/fully-old-item"
+  touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/fully-old-item/inner-file"
+  touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/fully-old-item"
+  run bash "$SCRIPTS/clean-safe.sh"
+  [ "$status" -eq 0 ]
+  [ ! -e "$PB/fully-old-item" ]
+}
+
 @test "whitelisting one Handoff pasteboard item protects it while others still clear (I5)" {
   PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
   mkdir -p "$PB/old-item" "$PB/other-old-item"

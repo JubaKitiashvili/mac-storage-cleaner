@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.0.1 — 2026-08-11
+
+Fixes for the external Greptile + cubic code-review findings raised on the
+marketplace PR (davila7/claude-code-templates#792) against the 2.0.0 release.
+
+### Fixed
+- **Electron process guard no longer fails open on a name mismatch** (Greptile
+  P1): the folder-name-vs-process-name probe is now a both-directions,
+  case-insensitive check (`pgrep -qix` exact-name OR `pgrep -qif` command-line
+  substring) — over-matching only ever costs an extra skip; only a clean
+  double miss counts as idle.
+- **DeviceSupport keep-N retention now orders by OS version, not mtime**
+  (Greptile): `keep_newest_n_children` enumerates via a newline-safe glob and
+  sorts with `sort -rV`, falling closed (keeps everything) if this `sort`
+  lacks `-V`. The AI-agent version loop was switched to the same
+  glob+version-sort enumeration for consistency (semver sorts correctly under
+  `-V` too).
+- **Symlinked retention roots no longer let deletion walk through to the
+  target** (cubic P0): the DeviceSupport keep-N loop, the AI-agent versions
+  loop, `DiagnosticReports`, and the Electron cache scan's `Application
+  Support` base now explicitly refuse a symlinked base (`skipped (symlink
+  base)`, logged, counted) instead of silently following it via `[ -d ]`.
+- **Handoff age gate is now content-aware, not just top-level-mtime-aware**
+  (cubic P1): a candidate directory is skipped if any descendant was modified
+  in the last 60 minutes, even when the directory's own mtime looks old —
+  never cuts an in-flight multi-file sync.
+- **NUL-delimited enumeration in every `find`-driven deletion loop** (cubic
+  P1): the Handoff, `DiagnosticReports`, and Electron cache-dir loops now read
+  from `find ... -print0` via process substitution (`< <(...)`, bash
+  3.2-safe) instead of a newline-delimited heredoc, and keep counters in the
+  calling shell (not a pipe subshell).
+- **Unresolved `Current` symlink no longer produces a misleading browser-
+  framework report** (cubic P2): `find-extras.sh` now prints a
+  could-not-resolve notice and skips suggestions for that framework instead
+  of listing every version as if none were "Current".
+- **Survey no longer overclaims what's auto-cleared** (cubic P2): the
+  Electron/browser cache section in `survey.sh` is split into an "Electron
+  apps" listing under the auto-clear title and a separately-labeled "browser
+  profile caches (NOT auto-cleared)" subsection.
+- **`trash-items.sh` exit-code contract clarified** (cubic P2): added
+  `previewed`/`missing` counters; exit is `1` on any failure, `2` only when
+  nothing was moved or previewed AND at least one item was refused (so a
+  mixed valid+refused dry-run now exits `0`; an all-refused run, dry or real,
+  still exits `2`; a missing-only run exits `0` with the count called out).
+
+### Testing
+- 76-test bats suite (up from 68): new coverage for both-direction Electron
+  matching, version-ordering-beats-mtime retention, symlinked-base refusal,
+  Handoff content freshness, and the trash-items.sh exit-code contract.
+
 ## 2.0.0 — 2026-08-11
 
 Hardening release: safety mechanisms inspired by a deep comparative audit against
