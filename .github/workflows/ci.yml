@@ -31,3 +31,6 @@ jobs:
         # SC2261: the two 2>/dev/null tokens both target the same find command (test expression
         #   + -exec action) — a harmless duplicate, not separate pipeline stages.
         run: shellcheck -e SC1091,SC2034,SC2088,SC2227,SC2254,SC2261 skills/mac-storage-cleaner/scripts/lib.sh skills/mac-storage-cleaner/scripts/survey.sh skills/mac-storage-cleaner/scripts/find-extras.sh
+
+      - name: Manifest version parity
+        run: bats tests/manifests.bats

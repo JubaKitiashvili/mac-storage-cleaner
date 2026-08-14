@@ -1,0 +1,8 @@
+{
+  "name": "mac-storage-cleaner",
+  "version": "3.0.0",
+  "description": "Trust-first macOS disk cleaner: allowlist-only auto-clean, mechanically enforced never-tier, reversible Trash removals, preview by default, audit log.",
+  "author": "Juba Kitiashvili",
+  "license": "MIT",
+  "repository": "https://github.com/JubaKitiashvili/mac-storage-cleaner"
+}
