@@ -36,6 +36,42 @@ hit something a script didn't classify or you need the precise command.
   deletions refuse to run unlogged (exit 3) unless the log directory is writable, or
   `MSC_ALLOW_UNLOGGED=1` explicitly opts into an unlogged run.
 
+## What this skill does to your disk (declared behavior)
+
+This section is a complete, mechanism-level statement of every destructive
+operation, so automated skill scanners and human reviewers can compare what is
+declared here against what the scripts actually do.
+
+**Deletes permanently (`rm -rf`)** — paths on the hard-coded safe allowlist in
+`scripts/lib.sh` (`SAFE_PATHS`, `KEEP_N_PATHS`, AI-CLI version roots); per-app
+`Cache`/`Code Cache`/`GPUCache`/`DawnWebGPUCache` subfolders found under
+`~/Library/Application Support` (only once a running-process check confirms the
+owning app is idle); and age-gated Handoff clipboard buffers and crash-report
+artifacts. The safe-tier, crash-report, and Electron-cache-subfolder deletions
+retry once after `chmod -R u+w` when a read-only file blocks removal; the
+DeviceSupport/AI-CLI-version and Handoff deletions do not retry.
+
+**Moves to the Trash (reversible)** — everything else, via `/usr/bin/trash`, then
+Finder automation through `osascript` (`tell application "Finder" to delete`),
+then a same-volume `mv` into `~/.Trash`.
+
+**Runs these third-party cleanup commands** — `brew cleanup -s --prune=all`,
+`conda clean -y --tarballs --index-cache --logfiles`, `xcrun simctl delete unavailable`.
+
+**Reads** — `du`, `df`, `find`, `stat`, `pgrep`/`ps`, `mdfind` and `mdutil`
+(Spotlight, to check whether an app is still installed and whether indexing is
+on), and `defaults read` on app bundles.
+
+**Writes** — `~/Library/Logs/mac-storage-cleaner/operations.log` (audit trail,
+rotated at 5 MB) and nothing else.
+
+**Mechanically refuses** — `/System`, `/bin`, `/sbin`, `/dev`, `/private/var/db`,
+other users' home directories, and the never-tier: iOS backups (MobileSync),
+Photos libraries, Keychains, Mail, Messages, `~/.ssh`, `~/.aws`, `~/.gnupg`.
+These are enforced in `validate_target_path`, not by convention.
+
+**Never uses `sudo`** and makes **no network requests**.
+
 ## Workflow
 
 **Locating the scripts.** Each command block below starts by resolving `$D` to
@@ -156,6 +192,14 @@ the path is on the tool's deny list (system/user roots) — never work around a
 refusal. Don't report space as freed when items logged `trash-failed` — nothing
 was actually removed.
 
+**Bulk operations need confirmation.** `trash-items.sh` refuses a batch of more than 100
+eligible items or 5 GB and exits 4, because several agents run shell commands without
+asking the user first. Show the user the list (a preview with `MSC_DRY_RUN=1` is never
+refused), get their explicit go-ahead, then re-run with `--force` as the first argument.
+Never pass `--force` pre-emptively. If `du` can't fully measure the batch (some paths are
+unreadable), the size guard is skipped for that run — with an on-screen warning and a
+`size-unmeasurable` log entry — but the 100-item cap still applies regardless.
+
 **App leftovers need verification.** The scan lists containers whose owning app a
 quick check couldn't confirm is installed — but Spotlight misses un-indexed apps,
 so some candidates *are* still installed. Before proposing to remove any leftover,
@@ -207,9 +251,13 @@ Read `references/cache-catalog.md` for the full tiered inventory and gotchas. Th
 - `MSC_DEVICE_SUPPORT_KEEP` (default `2`) — how many newest Xcode DeviceSupport versions to keep per platform.
 - `MSC_AI_AGENTS_KEEP` (default `1`) — how many newest non-active AI CLI versions to keep alongside the active (symlink-pinned) one.
 - `MSC_ALLOW_UNLOGGED` — set to `1` to let a destructive run proceed even when the audit log can't be written (default: refuse, exit 3).
+- `MSC_MAX_TRASH_ITEMS` (default `100`) — refuse a `trash-items.sh` batch with more eligible items unless `--force` is passed.
+- `MSC_MAX_TRASH_GB` (default `5`) — refuse a `trash-items.sh` batch larger than this unless `--force` is passed.
 
 ## Tests
 
-`bats tests/` from the repo root (`brew install bats-core`). Every test runs
-against a fake `$HOME`; the dangerous-path corpus in `tests/fixtures/` is a
-floor — investigate a failure, never weaken the corpus.
+`bats tests/` from a clone of the source repository
+(https://github.com/JubaKitiashvili/mac-storage-cleaner, `brew install bats-core`).
+The tests are not shipped inside the installed skill. Every test runs against a
+fake `$HOME`; the dangerous-path corpus in `tests/fixtures/` is a floor —
+investigate a failure, never weaken the corpus.
