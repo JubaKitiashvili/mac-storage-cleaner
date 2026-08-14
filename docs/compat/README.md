@@ -19,11 +19,19 @@ The top three agents are re-verified every release.
 | Agent | Verified | Version | Resolution | Trigger | Gating |
 |---|---|---|---|---|---|
 | Claude Code | 2026-08-14 | see file | ✅ | ✅* | ✅ |
-| Codex CLI | — | — | — | — | — |
-| Cursor | — | — | — | — | — |
-| Windsurf | — | — | — | — | — |
-| Antigravity | — | — | — | — | — |
-| opencode | — | — | — | — | — |
+| Codex CLI | 2026-08-14 | 0.144.5 | ✅ | unverified — requires an interactive session | ✅ |
+| Cursor | 2026-08-14 | 3.15.19 | ✅ | unverified — requires an interactive session | ✅ |
+| Windsurf | 2026-08-14 | 2.3.15 | ✅ | unverified — requires an interactive session | ✅ |
+| Antigravity | 2026-08-14 | 2.5.0 | ✅ | unverified — requires an interactive session | ✅ |
+| opencode | 2026-08-14 | 1.14.22 | ✅ | unverified — requires an interactive session | ✅ |
 
 \* Not a controlled test of the fixed trigger prompt — see the "Trigger" row's
 evidence in [claude-code.md](claude-code.md) for what was actually verified.
+
+For Codex CLI, Cursor, Windsurf, Antigravity, and opencode: Resolution and
+Gating were verified directly against each agent's own installed copy (see
+[codex-cli.md](codex-cli.md), [cursor.md](cursor.md), [windsurf.md](windsurf.md),
+[antigravity.md](antigravity.md), [opencode.md](opencode.md)). Trigger could
+not be verified for any of them — none exposes a non-interactive way to prove
+a skill was actually loaded and invoked by the agent's model, so each file
+records that honestly rather than inferring a pass from installation alone.
