@@ -260,7 +260,7 @@ made every command fail with 'No such file or directory'."
 ### Task 3: Safe by default — `clean-safe.sh` previews unless `--apply`
 
 **Files:**
-- Modify: `skills/mac-storage-cleaner/scripts/clean-safe.sh` (argument parsing at lines 12-20; the summary line containing `run without --dry-run to apply`)
+- Modify: `skills/mac-storage-cleaner/scripts/clean-safe.sh` (argument parsing at lines 11-20; the summary line containing `run without --dry-run to apply`)
 - Modify: `skills/mac-storage-cleaner/SKILL.md` (section 2 command block and the paragraph beginning "To preview first")
 - Modify: existing tests that assume deletion is the default
 - Create: `tests/apply_gate.bats`
@@ -411,7 +411,25 @@ is `clean_safe.bats`'s conda test, whose `*"conda clean"*` assertion also matche
 preview's `would run: conda clean …` line and would stay green while testing nothing.
 
 Do not touch `tests/apply_gate.bats` — it is the only place the no-argument default is
-under test.
+under test. (It is created in Step 1 of this task and contains bare invocations by design,
+so exclude it from the listing: append `| grep -v apply_gate` to the command above,
+otherwise it reports 44.)
+
+**One assertion also changes.** `tests/clean_safe.bats:11` asserts the old banner text:
+
+```bash
+  [[ "$output" == *"DRY RUN"* ]] || false
+```
+
+Step 3 renamed that banner to `=== PREVIEW — nothing will be deleted …`, so change this
+one line to:
+
+```bash
+  [[ "$output" == *"PREVIEW"* ]] || false
+```
+
+Leave `tests/trash.bats:49` alone — that asserts `trash-items.sh`'s own banner, which this
+task does not touch.
 
 - [ ] **Step 6: Update SKILL.md section 2 — preview block first, `--apply` block second**
 
@@ -1096,7 +1114,11 @@ Insert directly after the install section:
 
 - [ ] **Step 7: Deprecate the `.skill` artifact**
 
-Replace the README line linking `dist/mac-storage-cleaner.skill` with:
+Step 4 replaced README Options A-C, which contained the only link to
+`dist/mac-storage-cleaner.skill` (`README.md:68-70`), and left `### Option D — aitmpl.com`
+(`README.md:72-74`) orphaned above the new table. Delete the orphaned Option D heading —
+aitmpl is already a row in the new install matrix — and add this note directly beneath the
+matrix, so the artifact keeps a referenced home for one release:
 
 ```markdown
 > **Deprecated:** `dist/mac-storage-cleaner.skill` remains for one release only.
@@ -1251,8 +1273,12 @@ exist to prevent. To see the preview banner for the record, run it against a thr
 home in a single command with the tool-native commands stubbed:
 
 ```bash
+# Refuse to run at all unless the installed copy is the new version: SAFE_PATHS
+# contains non-$HOME globs (/private/tmp/metro-* and friends), so a stale copy
+# would delete real files even under a fake HOME.
+grep -q '^APPLY=0$' "$D/scripts/clean-safe.sh" || { echo "installed copy is stale — sync it first"; exit 1; }
 FAKE="$(mktemp -d)"; STUB="$(mktemp -d)"
-for s in brew xcode-select pgrep conda; do printf '#!/bin/bash\nexit 1\n' > "$STUB/$s"; chmod +x "$STUB/$s"; done
+for s in brew xcode-select pgrep conda ps; do printf '#!/bin/bash\nexit 1\n' > "$STUB/$s"; chmod +x "$STUB/$s"; done
 env HOME="$FAKE" PATH="$STUB:$PATH" bash "$D/scripts/clean-safe.sh" | head -3
 rm -rf "$FAKE" "$STUB"
 ```
