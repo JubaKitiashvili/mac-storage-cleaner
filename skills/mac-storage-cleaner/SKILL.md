@@ -30,15 +30,19 @@ hit something a script didn't classify or you need the precise command.
 
 ## Workflow
 
-**Locating the scripts.** The commands below resolve `$D` to this skill's own
-directory so they work whether the skill was installed as a plugin
-(`$CLAUDE_PLUGIN_ROOT` is set) or as a standalone skill (`~/.claude/skills/…`).
-Shell state doesn't persist between commands, so each block re-resolves `$D`.
+**Locating the scripts.** Each command block below starts by resolving `$D` to
+this skill's own directory. It searches every standard agent skill root —
+Claude Code, Codex, Cursor, opencode, Antigravity, Windsurf, Hermes, the
+cross-agent `.agents/skills`, and project-scoped installs — so the commands work
+no matter which agent installed the skill or where. Shell state doesn't persist
+between commands, so every block re-resolves `$D`; keep the two lines byte-identical
+when editing (a test enforces it).
 
 ### 1. Survey — caches (always first, read-only)
 
 ```bash
-D="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/mac-storage-cleaner}"; D="${D:-$HOME/.claude/skills/mac-storage-cleaner}"
+D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/survey.sh"
 ```
 
@@ -52,7 +56,8 @@ Tell the user briefly what the safe tier removes and roughly how much it frees,
 then:
 
 ```bash
-D="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/mac-storage-cleaner}"; D="${D:-$HOME/.claude/skills/mac-storage-cleaner}"
+D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/clean-safe.sh"
 ```
 
@@ -109,7 +114,8 @@ deletions. Key ones (full detail in the catalog):
 ### 4. Go beyond caches — the space the cleaners miss (read-only scan)
 
 ```bash
-D="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/mac-storage-cleaner}"; D="${D:-$HOME/.claude/skills/mac-storage-cleaner}"
+D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/find-extras.sh"
 ```
 
@@ -119,7 +125,8 @@ Downloads**. Everything here is ask-tier — present candidates, let the user pi
 then remove reversibly:
 
 ```bash
-D="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/mac-storage-cleaner}"; D="${D:-$HOME/.claude/skills/mac-storage-cleaner}"
+D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/trash-items.sh" "/path/one" "/path/two"
 ```
 
