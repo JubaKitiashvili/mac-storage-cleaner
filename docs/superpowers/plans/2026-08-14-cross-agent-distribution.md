@@ -20,7 +20,7 @@
 - **`MSC_DRY_RUN=1` may only ever make a run safer** — it overrides `--apply`, never the reverse.
 - **Every destructive action still logs via `log_op <action> <size> <path>`**; `log_op` no-ops when `MSC_DRY_RUN=1`.
 - **Skill folder name and frontmatter `name` must both stay `mac-storage-cleaner`** — the resolver, manifests and every registry key on it.
-- Commit after each task. Do not push and do not tag until Task 8.
+- Commit after each task. Task 1 pushes (CI cannot run otherwise); no other task pushes and no task tags until Task 8, and nothing is published until Task 9.
 
 ## File Structure
 
@@ -88,14 +88,25 @@ jobs:
 - [ ] **Step 3: Verify the shellcheck invocation passes locally first**
 
 Run: `cd ~/Desktop/Projects/mac-storage-cleaner && shellcheck -e SC1091 skills/mac-storage-cleaner/scripts/*.sh; echo "exit=$?"`
-Expected: `exit=0`. If shellcheck is not installed: `brew install shellcheck`. If it reports real findings, fix them in this task (they would fail CI otherwise) and note each fix in the commit message.
+Expected: `exit=0`. If shellcheck is not installed: `brew install shellcheck`.
 
-- [ ] **Step 4: Commit**
+If it reports findings, do **not** start refactoring five large scripts inside this task.
+Add the specific codes it reports to the `-e` list with a one-line comment naming each, and
+report the list in your final message so they can be triaged separately. CI's job here is to
+lock in the current passing state, not to open a cleanup project.
+
+- [ ] **Step 4: Commit and confirm CI actually runs green**
 
 ```bash
 git add .github/workflows/ci.yml
 git commit -m "ci: run bats and shellcheck on macos-latest"
+git push origin main
 ```
+
+Then watch the run: `gh run watch --exit-status` (or `gh run list --limit 1`). CI must be
+observed green **before Task 2 begins** — every later task relies on it as the safety net,
+and a workflow that has never executed is not a safety net. If the runner behaves
+differently from local (a missing tool, a path difference), fix it here.
 
 ---
 
@@ -129,12 +140,13 @@ resolver_snippet () {
   awk '/^D=""; for r in /{print; getline; print; exit}' "$SKILL_MD"
 }
 
-@test "SKILL.md has exactly four command blocks and one identical resolver" {
+@test "every SKILL.md command block uses one byte-identical resolver" {
   local n uniq
   n=$(grep -c '^D=""; for r in ' "$SKILL_MD")
-  [ "$n" -eq 4 ] || { echo "expected 4 resolver lines, found $n"; false; }
+  # >= 4 rather than == 4: Task 3 adds a fifth block (the --apply variant).
+  [ "$n" -ge 4 ] || { echo "expected >=4 resolver lines, found $n"; false; }
   uniq=$(grep '^D=""; for r in ' "$SKILL_MD" | sort -u | wc -l | tr -d ' ')
-  [ "$uniq" -eq 1 ] || { echo "the four resolver lines are not identical"; false; }
+  [ "$uniq" -eq 1 ] || { echo "the resolver lines are not identical to each other"; false; }
 }
 
 @test "resolver finds the skill in every documented global root" {
@@ -177,8 +189,11 @@ resolver_snippet () {
 }
 
 @test "every bash block in SKILL.md is syntactically valid" {
-  local tmp="$BATS_TEST_TMPDIR/blocks" b count=0
-  mkdir -p "$tmp"
+  # NOTE: this suite's pinned bats predates BATS_TEST_TMPDIR — every existing
+  # test uses "${BATS_TMPDIR:-/tmp}" with mktemp. Do the same, or an unset
+  # variable turns "mkdir -p $BATS_TEST_TMPDIR/blocks" into a write at /.
+  local tmp b count=0
+  tmp="$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc-blocks.XXXXXX")"
   awk -v out="$tmp" 'BEGIN{n=0}
     /^```bash$/ {n++; f=1; next}
     /^```$/     {f=0; next}
@@ -187,8 +202,9 @@ resolver_snippet () {
     [ -f "$b" ] || continue
     count=$((count + 1))
     run /bin/bash -n "$b"
-    [ "$status" -eq 0 ] || { echo "bash -n failed for $b"; false; }
+    [ "$status" -eq 0 ] || { echo "bash -n failed for $b"; rm -rf "$tmp"; false; }
   done
+  rm -rf "$tmp"
   [ "$count" -ge 4 ] || { echo "expected >=4 bash blocks, found $count"; false; }
 }
 ```
@@ -265,9 +281,15 @@ load test_helper
 
 setup () {
   setup_fake_home
+  # brew/xcode-select/pgrep match the existing suite's stubs; conda and ps are
+  # additional here because this file is the first to run clean-safe.sh with
+  # --apply, which reaches the tool-native section — an unstubbed `conda` would
+  # run the developer's real `conda clean`.
   make_stub brew 1
   make_stub xcode-select 1
   make_stub pgrep 1
+  make_stub conda 1
+  make_stub ps 1
   mkdir -p "$HOME/.npm/junk"
 }
 teardown () { teardown_fake_home; }
@@ -321,7 +343,8 @@ Expected: FAIL — the no-argument run currently deletes `$HOME/.npm/junk` and `
 
 - [ ] **Step 3: Replace the argument parsing in `clean-safe.sh`**
 
-Replace the block that currently reads (lines 12-20, from the `# Reject anything other than --dry-run` comment through the `[ "$DRY" = 1 ] && echo "=== DRY RUN …"` line) with:
+Replace **lines 11-20** — from the `# Reject anything other than --dry-run outright:` comment
+through the `[ "$DRY" = 1 ] && echo "=== DRY RUN …"` line — with:
 
 ```bash
 # Safe by default (v3.0.0): no argument previews. Deleting requires --apply.
@@ -344,12 +367,17 @@ DRY=1
 export MSC_DRY_RUN="$DRY"
 if [ "$DRY" = 1 ]; then
   echo "=== PREVIEW — nothing will be deleted (re-run with --apply to delete) ==="
-else
-  log_op consent "-" "--apply"
 fi
 ```
 
-`log_op` is already sourced from `lib.sh` above this point; no other ordering changes.
+`log_op` is sourced from `lib.sh` at line 8, so it is in scope here — but do **not** log
+the consent line yet. The `log_writable` gate further down may rotate the log; logging
+before it would put the consent entry in the rotated-away file. Instead, immediately
+**after** the existing `log_writable` abort-if-unlogged block, add:
+
+```bash
+[ "$DRY" = 1 ] || log_op consent "-" "--apply"
+```
 
 - [ ] **Step 4: Update the preview summary line**
 
@@ -365,18 +393,43 @@ Replace with:
   echo "Would reclaim from cache deletions: $(human_kb "$total_kb") — re-run with --apply to delete."
 ```
 
-- [ ] **Step 5: Update every existing test that expected deletion by default**
+- [ ] **Step 5: Append `--apply` to EVERY bare invocation in the existing suite**
 
-Run: `grep -rn 'clean-safe\.sh"$\|clean-safe\.sh$' tests/*.bats`
-For each invocation whose assertions expect deletion (a `[ ! -e … ]` or a `grep removed …log` afterwards), append ` --apply`. Leave invocations that assert preview/skip behavior unchanged — they already exercise the new default. Do not change `tests/apply_gate.bats`.
-
-- [ ] **Step 6: Update SKILL.md section 2**
-
-In the section-2 command block, change the invocation line to:
+There are **42** of them, in six files (clean_safe 22, retention 11, electron 6, lib_core 1,
+trash 1, whitelist 1). List them with:
 
 ```bash
+grep -rn 'clean-safe\.sh"' tests/*.bats | grep -vE 'clean-safe\.sh" *(--|-)'
+```
+
+Append ` --apply` to **all 42**, without exception. A bare invocation previously meant
+"a real run", so every assertion around it — including the ones that assert a guard
+*skipped* something — was written against a run that would otherwise have deleted.
+Leaving those bare would make them vacuous: under the new default nothing is deleted
+anyway, so `[ -d … ]` would pass without proving the guard did anything. The worst case
+is `clean_safe.bats`'s conda test, whose `*"conda clean"*` assertion also matches the
+preview's `would run: conda clean …` line and would stay green while testing nothing.
+
+Do not touch `tests/apply_gate.bats` — it is the only place the no-argument default is
+under test.
+
+- [ ] **Step 6: Update SKILL.md section 2 — preview block first, `--apply` block second**
+
+Do **not** change the existing section-2 block to `--apply`: that block is what the agent
+copies, so making it destructive reinstates the exact default this task removes. Leave it
+bare, and add a **second** block after the explanatory paragraph:
+
+````markdown
+```bash
+D=""; for r in … ; do … ; done          # ← the identical resolver line from Task 2
+[ -n "$D" ] || { … }                     # ← the identical guard line from Task 2
 bash "$D/scripts/clean-safe.sh" --apply
 ```
+````
+
+Both resolver lines must stay byte-identical to the other blocks (`tests/resolve.bats`
+enforces it). SKILL.md now has **five** bash blocks; Task 2's count assertion is written
+as `-ge 4` for exactly this reason.
 
 Replace the paragraph beginning "To preview first" with:
 
@@ -478,6 +531,11 @@ teardown () { teardown_fake_home; }
 
 @test "protected and missing paths do not count toward the cap" {
   local i paths=()
+  # $HOME/Library must EXIST for validate_target_path to be the thing that
+  # rejects it — setup_fake_home creates only .Trash and .config, and a
+  # non-existent path is skipped as "missing" long before validation runs,
+  # which would make this test prove nothing about protected paths.
+  mkdir -p "$HOME/Library"
   for i in $(seq 1 99); do
     : > "$HOME/junk/g$i"
     paths+=("$HOME/junk/g$i")
@@ -485,6 +543,20 @@ teardown () { teardown_fake_home; }
   # 99 eligible + one refused root + one missing path = under the cap of 100.
   run bash "$SCRIPTS/trash-items.sh" "${paths[@]}" "$HOME/Library" "$HOME/nope"
   [ "$status" -ne 4 ] || { echo "ineligible paths were counted toward the cap"; false; }
+  [[ "$output" == *"REFUSED"* ]] || { echo "the protected root was not refused"; false; }
+  [[ "$output" == *"not found"* ]] || { echo "the missing path was not reported"; false; }
+}
+
+@test "a preview is never refused by the cap — the user must be able to review" {
+  local i paths=()
+  for i in $(seq 1 101); do
+    : > "$HOME/junk/h$i"
+    paths+=("$HOME/junk/h$i")
+  done
+  MSC_DRY_RUN=1 run bash "$SCRIPTS/trash-items.sh" "${paths[@]}"
+  [ "$status" -eq 0 ] || { echo "preview was refused with status $status"; false; }
+  [[ "$output" == *"would trash"* ]] || false
+  [ -f "$HOME/junk/h1" ] || false
 }
 ```
 
@@ -512,7 +584,13 @@ Then update the empty-argument check on the following line to mention the flag:
 
 - [ ] **Step 4: Add the cap, immediately before the `for p in "$@"; do` main loop**
 
+The whole block is wrapped in `if [ "$DRY" != 1 ]`. A preview moves nothing, so refusing
+it would block the very review the refusal message asks the user to perform — and
+`log_op` no-ops under `MSC_DRY_RUN=1`, so a preview-time refusal could not be audited
+either. Preview freely; refuse the apply.
+
 ```bash
+if [ "$DRY" != 1 ]; then
 # Blast-radius cap. Some agents (opencode, OpenClaw) run shell commands with no
 # approval prompt, so a single call assembling "all my old downloads" could move
 # hundreds of a user's files at once. Count only ELIGIBLE paths — missing and
@@ -542,9 +620,10 @@ if [ "$FORCE" != 1 ] && { [ "$eligible_n" -gt "$MAX_ITEMS" ] || [ "$bulk_kb" -gt
   log_op refused-blast-radius "$(human_kb "$bulk_kb")" "$eligible_n item(s)"
   exit 4
 fi
+fi
 ```
 
-The `eligible+=(…)` growth and the `[ "$eligible_n" -gt 0 ]` guard before `"${eligible[@]}"` are required for bash 3.2 under `set -u`.
+The `eligible+=(…)` growth and the `[ "$eligible_n" -gt 0 ]` guard before `"${eligible[@]}"` are required for bash 3.2 under `set -u`. Note the two closing `fi`s: the inner one closes the refusal, the outer one closes the `if [ "$DRY" != 1 ]` wrapper.
 
 - [ ] **Step 5: Update the exit-code comment block at the top of the file**
 
@@ -553,7 +632,7 @@ Add to the header comment (lines 6-11) and to the trailing exit-code comment: `4
 - [ ] **Step 6: Run the tests**
 
 Run: `bats tests/blast_radius.bats && bats tests/`
-Expected: `blast_radius.bats` 5/5 pass; full suite green (106 tests).
+Expected: `blast_radius.bats` 6/6 pass; full suite green (107 tests).
 
 - [ ] **Step 7: Sync and commit**
 
@@ -627,8 +706,11 @@ fm () {  # print the YAML frontmatter block
 
 @test "the frontmatter is valid YAML" {
   if ! command -v ruby >/dev/null 2>&1; then skip "ruby not available"; fi
-  fm > "$BATS_TEST_TMPDIR/fm.yaml"
-  run ruby -ryaml -e 'YAML.load_file(ARGV[0])' "$BATS_TEST_TMPDIR/fm.yaml"
+  local f
+  f="$(mktemp "${BATS_TMPDIR:-/tmp}/msc-fm.XXXXXX")"
+  fm > "$f"
+  run ruby -ryaml -e 'YAML.load_file(ARGV[0])' "$f"
+  rm -f "$f"
   [ "$status" -eq 0 ] || { echo "$output"; false; }
 }
 ```
@@ -660,7 +742,7 @@ metadata:
 - [ ] **Step 4: Run the tests**
 
 Run: `bats tests/frontmatter.bats && bats tests/`
-Expected: `frontmatter.bats` 5/5 pass (or 4 pass + 1 skip if ruby is missing); full suite green (111 tests).
+Expected: `frontmatter.bats` 5/5 pass (or 4 pass + 1 skip if ruby is missing); full suite green (112 tests).
 
 - [ ] **Step 5: Verification spike — confirm the frontmatter loads on locally installed agents**
 
@@ -740,15 +822,19 @@ json_version () { grep -m1 '"version"' "$1" | sed -E 's/.*"version"[^"]*"([^"]+)
 }
 
 @test "bump-version.sh rewrites every location" {
-  local tmp; tmp="$BATS_TEST_TMPDIR/repo"
-  mkdir -p "$tmp"
-  ( cd "$ROOT" && rsync -a --exclude .git ./ "$tmp/" )
+  local tmp
+  tmp="$(mktemp -d "${BATS_TMPDIR:-/tmp}/msc-bump.XXXXXX")"
+  rsync -a --exclude .git --exclude dist "$ROOT/" "$tmp/"
   run bash "$tmp/tools/bump-version.sh" 9.9.9
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 0 ] || { echo "$output"; rm -rf "$tmp"; false; }
   grep -q '  version: 9.9.9' "$tmp/skills/mac-storage-cleaner/SKILL.md"
   grep -q '"version": "9.9.9"' "$tmp/.claude-plugin/plugin.json"
   grep -q '"version": "9.9.9"' "$tmp/.cursor-plugin/plugin.json"
   [ "$(grep -c '"version": "9.9.9"' "$tmp/.claude-plugin/marketplace.json")" -eq 2 ]
+  # idempotent: a second run must not corrupt anything
+  run bash "$tmp/tools/bump-version.sh" 9.9.9
+  [ "$status" -eq 0 ]
+  rm -rf "$tmp"
 }
 ```
 
@@ -822,7 +908,7 @@ Expected: the command prints five version lines, all `3.0.0`.
 - [ ] **Step 7: Run the tests**
 
 Run: `bats tests/manifests.bats && bats tests/`
-Expected: `manifests.bats` 4/4 pass; full suite green (115 tests).
+Expected: `manifests.bats` 4/4 pass; full suite green (116 tests).
 
 - [ ] **Step 8: Add the parity check to CI**
 
@@ -903,6 +989,17 @@ Add these two entries:
 - `MSC_MAX_TRASH_GB` (default `5`) — refuse a `trash-items.sh` batch larger than this unless `--force` is passed.
 ```
 
+Then add this paragraph to section 4, directly after the "Trash chain and refusals" block,
+so an agent that hits exit 4 knows what to do:
+
+```markdown
+**Bulk operations need confirmation.** `trash-items.sh` refuses a batch of more than 100
+eligible items or 5 GB and exits 4, because several agents run shell commands without
+asking the user first. Show the user the list (a preview with `MSC_DRY_RUN=1` is never
+refused), get their explicit go-ahead, then re-run with `--force` as the first argument.
+Never pass `--force` pre-emptively.
+```
+
 - [ ] **Step 3: Fix SKILL.md's Tests section**
 
 Replace the Tests section body with:
@@ -917,9 +1014,10 @@ investigate a failure, never weaken the corpus.
 
 - [ ] **Step 4: Rewrite the README install section**
 
-Replace the four Option A-D blocks with:
+Replace the Option A-C blocks with the following. The outer fence is `~~~` because the
+content itself contains ``` fences:
 
-```markdown
+~~~markdown
 ## Install
 
 **Any agent — one command:**
@@ -954,7 +1052,7 @@ VM that can only reach folders you explicitly connect. Neither can see
 there would report success while freeing nothing on your Mac. Use Claude **Code**
 (or any of the agents above), which runs on your real filesystem with your
 approval model.
-```
+~~~
 
 - [ ] **Step 5: Add the per-agent safety section to the README**
 
@@ -1010,9 +1108,23 @@ Replace the README line linking `dist/mac-storage-cleaner.skill` with:
 
 Do **not** delete the file in this release: it is a linked path and deleting it breaks external references.
 
+- [ ] **Step 7b: Fix the three stale README claims Step 5 does not touch**
+
+These predate this release and would otherwise ship contradicting the new behavior:
+
+1. `README.md:43` — the bullet reading "**Preview first**: `--dry-run` shows exactly what a
+   run would do…" becomes: "**Preview is the default**: a bare `clean-safe.sh` shows exactly
+   what a run would do and deletes nothing; `--apply` performs it. Guards and whitelist apply
+   identically in both, so the preview always matches reality."
+2. `README.md:50` — "**89 automated tests**" becomes "**116 automated tests**".
+3. `README.md:90` — the "Useful knobs" table lists only `--dry-run`. Replace that row with
+   `| \`--apply\` | actually delete (without it, a run only previews) |` and add
+   `| \`--force\` (trash-items.sh) | proceed past the 100-item / 5 GB bulk cap |`.
+
 - [ ] **Step 8: Write the CHANGELOG entry**
 
-Add at the top of `CHANGELOG.md`:
+Insert immediately **after** the `# Changelog` heading (above the `## 2.0.6` section, not
+above the H1):
 
 ```markdown
 ## 3.0.0 — 2026-08-14
@@ -1057,7 +1169,7 @@ default is no longer destructive.
   there. Removed next minor.
 
 ### Testing
-- 115 tests (up from 89): resolver coverage for every documented install root,
+- 116 tests (up from 89): resolver coverage for every documented install root,
   the `--apply` gate, the blast-radius cap, frontmatter byte budget, manifest
   parity, and a lint that `bash -n`s every command block in SKILL.md.
 ```
@@ -1121,16 +1233,32 @@ The top three agents are re-verified every release.
 
 - [ ] **Step 2: Verify Claude Code and record it**
 
-Run these three checks and paste the real output into `docs/compat/claude-code.md`:
+Run these checks and paste the real output into `docs/compat/claude-code.md`.
 
 ```bash
-# 1. Resolution — run the resolver exactly as SKILL.md does
+# 1. Resolution — run the resolver exactly as SKILL.md does (read-only)
 D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done; echo "D=$D"
-# 3. Gating — preview must delete nothing (safe: this is the new default)
-bash "$D/scripts/clean-safe.sh" | tail -3
+
+# 3a. Gating — prove the INSTALLED copy carries the new parser, without running it
+grep -c '^APPLY=0$' "$D/scripts/clean-safe.sh"        # must print 1
+grep -c 'PREVIEW — nothing will be deleted' "$D/scripts/clean-safe.sh"  # must print 1
 ```
 
-For assertion 2, note that this very session's skill invocation is the evidence.
+**Never run the installed `clean-safe.sh` against your real `$HOME` to test gating.**
+If the sync in an earlier task was skipped, the installed copy is still the old version
+where a bare invocation *deletes* — which is exactly the accident the Global Constraints
+exist to prevent. To see the preview banner for the record, run it against a throwaway
+home in a single command with the tool-native commands stubbed:
+
+```bash
+FAKE="$(mktemp -d)"; STUB="$(mktemp -d)"
+for s in brew xcode-select pgrep conda; do printf '#!/bin/bash\nexit 1\n' > "$STUB/$s"; chmod +x "$STUB/$s"; done
+env HOME="$FAKE" PATH="$STUB:$PATH" bash "$D/scripts/clean-safe.sh" | head -3
+rm -rf "$FAKE" "$STUB"
+```
+
+For assertion 2 (Trigger), this session's own invocation of the skill is the evidence —
+record the prompt that triggered it.
 
 `docs/compat/claude-code.md`:
 
@@ -1241,4 +1369,4 @@ diff -rq skills/mac-storage-cleaner ~/.claude/skills/mac-storage-cleaner  # sile
 
 **2. Placeholder scan.** The only intentional fill-ins are real measurements that cannot be known before running: the frontmatter spike results (T5 Step 5), the Claude Code version string and per-agent evidence (T8 Step 2, T9 Step 2). Each says exactly what to record and what to write when an agent is not installed.
 
-**3. Type consistency.** `--apply` / `--dry-run` / `MSC_DRY_RUN` semantics are identical in T3, T7 and the CHANGELOG. `--force`, exit 4, `MSC_MAX_TRASH_ITEMS`, `MSC_MAX_TRASH_GB` match across T4 and T7. The resolver snippet in T2 Step 3, T8 Step 2 and the docs is the same text. `metadata.version` is read the same way by T6's `skill_version()` and written the same way by `tools/bump-version.sh`. Test counts rise 89 → 95 → 101 → 106 → 111 → 115 consistently across tasks.
+**3. Type consistency.** `--apply` / `--dry-run` / `MSC_DRY_RUN` semantics are identical in T3, T7 and the CHANGELOG. `--force`, exit 4, `MSC_MAX_TRASH_ITEMS`, `MSC_MAX_TRASH_GB` match across T4 and T7. The resolver snippet in T2 Step 3, T8 Step 2 and the docs is the same text. `metadata.version` is read the same way by T6's `skill_version()` and written the same way by `tools/bump-version.sh`. Test counts rise 89 → 95 → 101 → 107 → 112 → 116 consistently across tasks.
