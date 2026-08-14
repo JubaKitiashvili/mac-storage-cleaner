@@ -42,9 +42,10 @@ This section is a complete, mechanism-level statement of every destructive
 operation, so automated skill scanners and human reviewers can compare what is
 declared here against what the scripts actually do.
 
-**None of the following happens without an explicit flag.** `clean-safe.sh`
-deletes only with `--apply`; `trash-items.sh` only exceeds its bulk cap with
-`--force`. A bare invocation of either always previews.
+**Nothing is deleted permanently without an explicit flag**: `clean-safe.sh`
+deletes only with `--apply`; `trash-items.sh` moves only the paths you
+explicitly name, reversibly into the Trash, refuses bulk batches without
+`--force`, and previews with `--dry-run`.
 
 **Deletes permanently (`rm -rf`)** — paths on the hard-coded safe allowlist in
 `scripts/lib.sh` (`SAFE_PATHS`, `KEEP_N_PATHS`, AI-CLI version roots); per-app

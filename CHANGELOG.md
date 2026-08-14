@@ -14,6 +14,12 @@ default is no longer destructive.
 - **`trash-items.sh` refuses bulk operations.** Batches over 100 eligible items
   or 5 GB now exit 4 unless `--force` is the first argument
   (`MSC_MAX_TRASH_ITEMS`, `MSC_MAX_TRASH_GB`).
+- **`trash-items.sh` rejects unknown leading flags.** Any argument after
+  `--force` that starts with `-` and isn't `--dry-run` or `--` now exits 2
+  instead of falling through to the path loop — previously an unrecognized
+  flag like a typo'd `--dry-run` printed `not found: <flag>` and then
+  trashed the remaining arguments for real, a preview request silently
+  performing a real destructive run.
 
 ### Fixed
 - **The skill now finds itself when installed by any agent.** Every SKILL.md
@@ -23,6 +29,9 @@ default is no longer destructive.
   failed with "No such file or directory".
 
 ### Added
+- `trash-items.sh --dry-run`, a real preview switch (same contract as
+  `MSC_DRY_RUN=1`): previews what would be trashed and moves nothing.
+  Composes with `--force` (`--force --dry-run` previews).
 - Portable frontmatter: `license` plus a string-valued `metadata` map carrying
   version, author, platform and tags; the description is now asserted in bytes
   (972/1024) because Georgian trigger phrases cost 3 bytes per glyph.

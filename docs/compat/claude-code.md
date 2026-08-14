@@ -6,11 +6,20 @@
 
 | Assertion | Result | Evidence |
 |---|---|---|
-| Resolution | ✅ | `D=/Users/macbook/.claude/skills/mac-storage-cleaner` — resolver script (verbatim from SKILL.md) found `scripts/lib.sh` at this path on the first matching root (`$HOME/.claude/skills`). |
+| Resolution | ✅ | `D=/Users/macbook/.claude/skills/mac-storage-cleaner` — resolver script (verbatim from SKILL.md **as of 2026-08-14, before the `MSC_SKILL_ROOT` candidate was added** — see caveat below) found `scripts/lib.sh` at this path on the first matching root (`$HOME/.claude/skills`). |
 | Trigger | ✅ | Not a controlled test of the literal fixed prompt "my mac is out of space" in English. Evidence instead: in this session the skill was explicitly invoked via its slash command with the Georgian prompt *"ეხლა ჩვენი სქილი ეხლა რეალურად მუშაობს claude cli-ზე"* ("now our skill actually works on claude cli"); in an earlier session, the skill auto-triggered (no explicit invocation) from a Georgian out-of-space phrasing. Together this shows the skill loads in Claude Code and has been used to run real cleanups — recorded honestly as real usage, not a controlled trigger-prompt experiment. |
 | Gating | ✅ | `grep -c '^APPLY=0$' "$D/scripts/clean-safe.sh"` → `1`; `grep -c 'PREVIEW — nothing will be deleted' "$D/scripts/clean-safe.sh"` → `1`. Additionally ran the gated demonstration (fake `$HOME`, stubbed `brew`/`xcode-select`/`pgrep`/`conda`/`ps`, real `$HOME` never touched): bare invocation printed `=== PREVIEW — nothing will be deleted (re-run with --apply to delete) ===` and only logged `would run: ...` lines — nothing was deleted. |
 
 ## Verification commands (literal transcript)
+
+> **Caveat (2026-08-14, post-review):** this transcript predates the fix wave
+> that added `"${MSC_SKILL_ROOT:-/nonexistent}"` as the first candidate in
+> every SKILL.md resolver line. The resolver command below is now stale —
+> it's missing that first candidate — though the result (`$D` resolving to
+> `~/.claude/skills/mac-storage-cleaner`) is unaffected, since `MSC_SKILL_ROOT`
+> was unset in this run and the search fell through to the same
+> `$HOME/.claude/skills` match either way. Re-run against the current
+> SKILL.md to refresh this transcript verbatim.
 
 Resolution:
 
