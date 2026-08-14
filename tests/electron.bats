@@ -7,7 +7,7 @@ teardown () { teardown_fake_home; }
 
 @test "Electron-style app cache is removed when the app is not running" {
   mkdir -p "$HOME/Library/Application Support/FakeApp/Cache/junk"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/Library/Application Support/FakeApp/Cache" ]
 }
@@ -15,7 +15,7 @@ teardown () { teardown_fake_home; }
 @test "Electron-style app cache is skipped while the app is running (fail closed)" {
   mkdir -p "$HOME/Library/Application Support/FakeApp/Cache/junk"
   make_stub ps 0 "1234 /Applications/FakeApp.app/Contents/MacOS/FakeApp"   # process snapshot shows it running
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (app running"* ]] || false
   [ -d "$HOME/Library/Application Support/FakeApp/Cache/junk" ]
@@ -32,7 +32,7 @@ teardown () { teardown_fake_home; }
 @test "whitelisting the app's Application Support dir protects its cache" {
   mkdir -p "$HOME/Library/Application Support/FakeApp/Cache/junk"
   printf '~/Library/Application Support/FakeApp\n' > "$MSC_WHITELIST_FILE"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (whitelisted)"* ]] || false
   [ -d "$HOME/Library/Application Support/FakeApp/Cache/junk" ]
@@ -46,7 +46,7 @@ teardown () { teardown_fake_home; }
 @test "Electron guard: literal parens in app name match via ps+grep -F (metachar-proof, not regex) (R1a)" {
   mkdir -p "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk"
   make_stub ps 0 "1234 /Applications/FakeApp (Beta).app/Contents/MacOS/FakeApp (Beta)"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (app running"* ]] || false
   [ -d "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk" ]
@@ -57,7 +57,7 @@ teardown () { teardown_fake_home; }
 @test "Electron guard: ps snapshot with only unrelated lines counts as idle — cache removed (R1b)" {
   mkdir -p "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk"
   make_stub ps 0 "5678 /usr/sbin/some-other-daemon --flag"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/Library/Application Support/FakeApp (Beta)/Cache" ]
 }
@@ -66,7 +66,7 @@ teardown () { teardown_fake_home; }
 @test "Electron guard: ps snapshot failure (rc<>0 / empty) is unknown — skipped, not removed (R1c)" {
   mkdir -p "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk"
   make_stub ps 1
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (app running"* ]] || false
   [ -d "$HOME/Library/Application Support/FakeApp (Beta)/Cache/junk" ]

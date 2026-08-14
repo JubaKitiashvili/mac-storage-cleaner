@@ -66,7 +66,7 @@ EOF
   mkdir -p "$HOME/real-cache/data"
   ln -s "$HOME/real-cache" "$HOME/.npm"
   make_stub brew 1; make_stub xcode-select 1
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (symlink"* ]] || false
   [ -d "$HOME/real-cache/data" ]
@@ -90,6 +90,42 @@ EOF
   MSC_DRY_RUN=1 run bash "$SCRIPTS/trash-items.sh" "$HOME/Library" "$HOME/Documents"
   [ "$status" -eq 2 ]
   [[ "$output" == *"REFUSED"* ]] || false
+}
+
+@test "trash-items.sh rejects an unknown leading flag with exit 2 and trashes nothing (C1)" {
+  mkdir -p "$HOME/Downloads/old-stuff"
+  run bash "$SCRIPTS/trash-items.sh" --dry-run-typo "$HOME/Downloads/old-stuff"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unknown argument"* ]] || false
+  [ -d "$HOME/Downloads/old-stuff" ] || { echo "unknown flag trashed the path for real"; false; }
+}
+
+@test "trash-items.sh --dry-run previews for real and leaves the file in place (C1)" {
+  mkdir -p "$HOME/Downloads/old-stuff"
+  run bash "$SCRIPTS/trash-items.sh" --dry-run "$HOME/Downloads/old-stuff"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DRY RUN"* ]] || false
+  [[ "$output" == *"would trash"*"old-stuff"* ]] || false
+  [ -d "$HOME/Downloads/old-stuff" ]
+  [ ! -e "$HOME/Library/Logs/mac-storage-cleaner/operations.log" ]
+}
+
+@test "trash-items.sh --force still trashes for real (C1 regression)" {
+  mkdir -p "$HOME/Downloads/old-stuff"
+  make_stub osascript 1
+  run bash "$SCRIPTS/trash-items.sh" --force "$HOME/Downloads/old-stuff"
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/Downloads/old-stuff" ]
+}
+
+@test "trash-items.sh --force --dry-run previews, does not trash (C1)" {
+  mkdir -p "$HOME/Downloads/old-stuff"
+  run bash "$SCRIPTS/trash-items.sh" --force --dry-run "$HOME/Downloads/old-stuff"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DRY RUN"* ]] || false
+  [[ "$output" == *"would trash"*"old-stuff"* ]] || false
+  [ -d "$HOME/Downloads/old-stuff" ]
+  [ ! -e "$HOME/Library/Logs/mac-storage-cleaner/operations.log" ]
 }
 
 @test "trash_path on a symlink skips Finder entirely and uses mv, moving only the link (F4b)" {

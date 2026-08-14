@@ -28,7 +28,7 @@ write_wl () { printf '%s\n' "$@" > "$MSC_WHITELIST_FILE"; }
   mkdir -p "$HOME/.npm/junk" "$HOME/.cache/pip/junk"
   write_wl '~/.npm'
   make_stub brew 1; make_stub xcode-select 1
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (whitelisted): $HOME/.npm"* ]] || false
   [ -d "$HOME/.npm/junk" ]          # untouched

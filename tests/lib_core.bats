@@ -58,7 +58,7 @@ teardown () { teardown_fake_home; }
 @test "clean-safe.sh runs to completion on an empty fake HOME" {
   make_stub brew 1
   make_stub xcode-select 1
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"Approx. reclaimed"* ]]
 }

@@ -1,7 +1,7 @@
 {
   "name": "mac-storage-cleaner",
   "description": "Safely reclaim disk space on a Mac — the trustworthy, transparent, reversible alternative to CleanMyMac. Surveys usage, auto-clears only pure caches, moves anything riskier to the Trash, asks before anything expensive, and logs every deletion.",
-  "version": "2.0.6",
+  "version": "3.0.0",
   "author": {
     "name": "Juba Kitiashvili",
     "url": "https://github.com/JubaKitiashvili"

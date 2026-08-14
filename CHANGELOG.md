@@ -1,5 +1,64 @@
 # Changelog
 
+## 3.0.0 — 2026-08-14
+
+Cross-agent release: the skill now runs on every major AI coding agent, and its
+default is no longer destructive.
+
+### Breaking
+- **`clean-safe.sh` previews by default.** Deleting requires `--apply`.
+  `--dry-run` is still accepted as an alias, and `MSC_DRY_RUN=1` overrides
+  `--apply` (the env var can only ever make a run safer). Several agents execute
+  shell commands with no approval prompt, so a destructive default meant an agent
+  could delete caches the user never saw proposed.
+- **`trash-items.sh` refuses bulk operations.** Batches over 100 eligible items
+  or 5 GB now exit 4 unless `--force` is the first argument
+  (`MSC_MAX_TRASH_ITEMS`, `MSC_MAX_TRASH_GB`).
+- **`trash-items.sh` rejects unknown leading flags.** Any argument after
+  `--force` that starts with `-` and isn't `--dry-run` or `--` now exits 2
+  instead of falling through to the path loop — previously an unrecognized
+  flag like a typo'd `--dry-run` printed `not found: <flag>` and then
+  trashed the remaining arguments for real, a preview request silently
+  performing a real destructive run.
+
+### Fixed
+- **The skill now finds itself when installed by any agent.** Every SKILL.md
+  command block searches all standard skill roots (Claude Code, Codex, Cursor,
+  opencode, Antigravity, Windsurf, Hermes, `.agents/skills`, and project-scoped
+  installs) instead of only `~/.claude/skills`, where an install anywhere else
+  failed with "No such file or directory".
+
+### Added
+- `trash-items.sh --dry-run`, a real preview switch (same contract as
+  `MSC_DRY_RUN=1`): previews what would be trashed and moves nothing.
+  Composes with `--force` (`--force --dry-run` previews).
+- Portable frontmatter: `license` plus a string-valued `metadata` map carrying
+  version, author, platform and tags; the description is now asserted in bytes
+  (972/1024) because Georgian trigger phrases cost 3 bytes per glyph.
+- `agents/openai.yaml` (Codex display metadata and implicit invocation) and
+  `.cursor-plugin/plugin.json` (Cursor Marketplace).
+- A declared-behavior section in SKILL.md enumerating every destructive
+  operation, for automated skill scanners.
+- GitHub Actions CI on `macos-latest`: bats, shellcheck, SKILL.md bash-block
+  linting and manifest version parity.
+- `tools/bump-version.sh` — one command sets the version in all five places.
+- Per-agent install matrix, per-agent safety table, and a telemetry disclosure in
+  the README.
+
+### Removed
+- `dist/mac-storage-cleaner.skill` — built for a Claude Desktop upload flow that
+  requires `.zip` and a ≤200-character description, so it was never installable
+  there.
+
+### Testing
+- 131 tests (up from 89): resolver coverage for every documented install root
+  (including the `MSC_SKILL_ROOT` escape hatch), the `--apply` gate, the
+  blast-radius cap, frontmatter byte budget, manifest parity, a lint that
+  `bash -n`s every command block in SKILL.md, and a post-release fix wave
+  covering the `trash-items.sh` unknown-flag fail-open bug, `--force` consent
+  logging, honest unmeasurable-size reporting, and the `clean-safe.sh`
+  extra-argument gate.
+
 ## 2.0.6 — 2026-08-11
 
 Fix for a cubic P2 finding, fallback path only: `_version_sort_desc`'s awk

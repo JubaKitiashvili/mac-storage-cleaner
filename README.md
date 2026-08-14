@@ -1,16 +1,16 @@
 # mac-storage-cleaner
 
 [![version](https://img.shields.io/github/v/tag/JubaKitiashvili/mac-storage-cleaner?label=version&style=flat-square)](https://github.com/JubaKitiashvili/mac-storage-cleaner/blob/main/CHANGELOG.md)
-[![tests](https://img.shields.io/badge/tests-89%20passing-brightgreen?style=flat-square)](#safety)
+[![tests](https://img.shields.io/badge/tests-131%20passing-brightgreen?style=flat-square)](#safety)
 [![platform](https://img.shields.io/badge/platform-macOS-black?style=flat-square)](#requirements)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![aitmpl](https://img.shields.io/badge/listed%20on-aitmpl.com-8A2BE2?style=flat-square)](https://aitmpl.com)
 
-**A Claude skill that safely reclaims disk space on a Mac — the trustworthy, transparent, reversible alternative to CleanMyMac and the dozens of "cleaner" apps.**
+**An agent skill that safely reclaims disk space on a Mac — the trustworthy, transparent, reversible alternative to CleanMyMac and the dozens of "cleaner" apps.**
 
-The problem with one-click cleaners isn't that they don't free space — it's that you can't *see* what they're about to delete or *undo* it if they're wrong. This skill flips that. It's driven by Claude, so it reasons about every location, shows you the plan before touching anything, deletes only what provably regenerates, moves anything riskier to the **Trash** (not `rm`), and **logs every action**.
+The problem with one-click cleaners isn't that they don't free space — it's that you can't *see* what they're about to delete or *undo* it if they're wrong. This skill flips that. It's driven by your AI coding agent (Claude Code, Codex, Cursor, Windsurf, opencode and more — see the install matrix below), so it reasons about every location, shows you the plan before touching anything, deletes only what provably regenerates, moves anything riskier to the **Trash** (not `rm`), and **logs every action**.
 
-> Just tell Claude *"my Mac is out of space"* (or *"clear my caches"*, *"what's eating my storage"* — it understands other languages too, including Georgian *"ადგილი აღარ მაქვს"*) and the skill takes over.
+> Just tell your agent *"my Mac is out of space"* (or *"clear my caches"*, *"what's eating my storage"* — it understands other languages too, including Georgian *"ადგილი აღარ მაქვს"*) and the skill takes over. Using Claude Code? Just tell Claude.
 
 ---
 
@@ -40,38 +40,87 @@ Full tiered inventory, exact reclaim commands, and edge-case notes live in [`ski
 - **Auto-deletes only pure caches** on an explicit allowlist — never your data.
 - **The "never" tier is enforced in code, not just policy**: iOS backups, Photos libraries, Keychains, Mail/Messages data, `~/.ssh`/`~/.aws`/`~/.gnupg` are *mechanically refused* by the deletion validator — even if the reasoning layer were ever wrong, the scripts won't touch them. A property test guarantees the allowlist and the deny list can never overlap.
 - **Reversible by default** for everything else — a three-stage Trash chain (`/usr/bin/trash` → Finder → same-volume move), restorable until emptied.
-- **Preview first**: `--dry-run` shows exactly what a run would do — guards and whitelist apply identically in preview and reality.
+- **Preview is the default**: a bare `clean-safe.sh` shows exactly what a run would do and deletes nothing; `--apply` performs it. Guards and whitelist apply identically in both, so the preview always matches reality.
 - **Fail-closed process guards**: caches whose owner may be live (Xcode toolchain, Gradle daemon, running Electron apps) are skipped, and "can't tell" always means "skip".
 - **Keeps what you still need**: DeviceSupport symbol caches keep the 2 newest OS versions; auto-updating AI CLIs (Claude Code, Cursor, Copilot) keep the active version — pinned via its launcher symlink, never guessed from timestamps.
 - **Your whitelist wins**: one path per line in `~/.config/mac-storage-cleaner/whitelist` protects it (and everything under it) from every automatic tier, case-insensitively.
 - **No `sudo`** into system/SIP-protected areas.
 - **Every action logged** to `~/Library/Logs/mac-storage-cleaner/operations.log` (5 MB rotation) — and the scripts *refuse to delete unlogged* unless you explicitly override.
 - **Honest accounting**: partial removals reported as partial, unmeasurable sizes as `size?` (never fake zeros), survey totals exclude whitelisted items, APFS "purgeable" space explained instead of hand-waved.
-- **89 automated tests** (bats), including a 47-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests can never touch a real machine. Audited by an independent multi-model panel, then battle-tested through three external bot-review rounds (Greptile + cubic — 15 valid findings fixed, each with a regression test); bash 3.2-compatible (the version macOS ships).
+- **131 automated tests** (bats), including a 47-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests never touch your real home directory. Audited by an independent multi-model panel, then battle-tested through three external bot-review rounds (Greptile + cubic — 15 valid findings fixed, each with a regression test); bash 3.2-compatible (the version macOS ships).
+
+### How safety works on your agent
+
+The skill's own guardrails (allowlist-only deletion, mechanically refused
+never-tier, Trash instead of `rm`, audit log) are identical everywhere. What
+differs is whether your agent asks before running a command (as documented by
+each vendor, August 2026):
+
+| Agent | Before a destructive command |
+|---|---|
+| Claude Code | prompts per command |
+| Cursor | sandbox + explicit file-deletion protection for `rm` |
+| Antigravity | permission lists; `command(rm -rf)` is a documented deny entry |
+| Windsurf | four auto-execution levels; `rm` is a documented deny-list example |
+| Codex | approval policy per session |
+| **opencode** | **no prompt by default** |
+| **OpenClaw** | **no prompt by default** (`security="full", ask="off"`) |
+
+That is why `clean-safe.sh` **previews by default** and needs `--apply` to
+delete, and why `trash-items.sh` refuses batches over 100 items or 5 GB without
+`--force`. On a no-prompt agent those defaults are the only thing standing
+between an over-eager agent and your files — no script can tell an agent from a
+human, so the guarantee is *there is no destructive default*, not *a human always
+approves*.
 
 ## Install
 
-### Option A — Claude Code plugin (recommended)
-
-```
-/plugin marketplace add JubaKitiashvili/mac-storage-cleaner
-/plugin install mac-storage-cleaner@mac-storage-cleaner
-```
-
-### Option B — drop-in skill folder
+**Any agent — one command:**
 
 ```bash
-git clone https://github.com/JubaKitiashvili/mac-storage-cleaner.git
-cp -R mac-storage-cleaner/skills/mac-storage-cleaner ~/.claude/skills/
+npx skills add JubaKitiashvili/mac-storage-cleaner
 ```
 
-### Option C — single `.skill` file
+This installs into whichever agents you have (Claude Code, Codex, Cursor,
+Windsurf, opencode, Antigravity, Gemini CLI, Copilot CLI and ~70 more) via the
+open [skills CLI](https://github.com/vercel-labs/skills). Add `-g` for a global
+install, or `-a <agent>` to target one.
 
-Download [`dist/mac-storage-cleaner.skill`](dist/mac-storage-cleaner.skill) and install it via your Claude client.
+| Agent | Command | Lands in |
+|---|---|---|
+| Claude Code | `/plugin marketplace add JubaKitiashvili/mac-storage-cleaner` then `/plugin install mac-storage-cleaner@mac-storage-cleaner` | plugin root |
+| Codex / Codex CLI | `npx skills add JubaKitiashvili/mac-storage-cleaner -a codex -g` | `~/.codex/skills/` |
+| Cursor | `npx skills add JubaKitiashvili/mac-storage-cleaner -a cursor -g` | `~/.cursor/skills/` |
+| Windsurf | `npx skills add JubaKitiashvili/mac-storage-cleaner -a windsurf -g` | `~/.codeium/windsurf/skills/` |
+| Antigravity | `npx skills add JubaKitiashvili/mac-storage-cleaner -a antigravity -g` | `~/.gemini/antigravity/skills/` |
+| opencode | `npx skills add JubaKitiashvili/mac-storage-cleaner -a opencode -g` | `~/.config/opencode/skills/` |
+| Hermes Agent | `hermes skills install JubaKitiashvili/mac-storage-cleaner/skills/mac-storage-cleaner` | `~/.hermes/skills/` |
+| OpenClaw | `openclaw skills install …` (see ClawHub listing) | `~/.agents/skills/` |
+| Manual | `git clone` then copy `skills/mac-storage-cleaner/` into any skills root | — |
 
-### Option D — aitmpl.com (claude-code-templates)
+Any agent not listed above still works: set `MSC_SKILL_ROOT` to the directory
+that contains the `mac-storage-cleaner` folder (e.g. its own skills root), and
+every resolver in SKILL.md checks it first, ahead of the standard roots above.
 
-The skill is also listed in [davila7/claude-code-templates](https://github.com/davila7/claude-code-templates) under `skills/productivity/` and browsable on [aitmpl.com](https://aitmpl.com).
+> **Removed:** `dist/mac-storage-cleaner.skill` has been removed from the
+> repository. It was built for a Claude Desktop upload flow that requires a
+> `.zip` whose root is the skill folder and caps skill descriptions at 200
+> characters, so it was never installable there. Use the install commands above.
+
+### Claude Desktop / claude.ai — not supported, and here's why
+
+Skills uploaded to Claude Desktop or claude.ai run their scripts in a sandbox:
+in chat they execute in Anthropic's server-side container, and in Cowork inside a
+VM that can only reach folders you explicitly connect. Neither can see
+`~/Library/Caches`, `~/Library/Developer`, or your Trash — so a disk cleaner
+there would report success while freeing nothing on your Mac. Use Claude **Code**
+(or any of the agents above), which runs on your real filesystem with your
+approval model.
+
+> **Telemetry.** This skill sends nothing anywhere — it makes no network
+> requests at all. The `npx skills add` installer, which is third-party, reports
+> installs of public GitHub repositories to skills.sh; that is what produces the
+> public listing. Install by cloning if you would rather not.
 
 ## Usage
 
@@ -87,7 +136,8 @@ Useful knobs (all optional):
 
 | | |
 |---|---|
-| `--dry-run` (or `MSC_DRY_RUN=1`) | full preview, zero deletions, zero log writes |
+| `--apply` | actually delete (without it, a run only previews) |
+| `--force` (trash-items.sh) | proceed past the 100-item / 5 GB bulk cap |
 | `~/.config/mac-storage-cleaner/whitelist` | paths/globs to always keep (case-insensitive, protects subtrees) |
 | `MSC_DEVICE_SUPPORT_KEEP` (default 2) | how many DeviceSupport OS versions to keep |
 | `MSC_AI_AGENTS_KEEP` (default 1) | old AI-CLI versions to keep besides the active one |
