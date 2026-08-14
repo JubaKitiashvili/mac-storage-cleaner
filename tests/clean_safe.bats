@@ -8,7 +8,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$HOME/.npm/junk" "$HOME/.gradle/caches/junk"
   run bash "$SCRIPTS/clean-safe.sh" --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"DRY RUN"* ]] || false
+  [[ "$output" == *"PREVIEW"* ]] || false
   [[ "$output" == *"would remove"*".npm"* ]] || false
   [[ "$output" == *"would remove"*".gradle/caches"* ]] || false
   [ -d "$HOME/.npm/junk" ]
@@ -26,7 +26,7 @@ teardown () { teardown_fake_home; }
 
 @test "real run still deletes (regression)" {
   mkdir -p "$HOME/.npm/junk"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ ! -e "$HOME/.npm" ]
   grep -q "removed" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
 }
@@ -34,7 +34,7 @@ teardown () { teardown_fake_home; }
 @test "gradle caches are skipped while a Gradle daemon runs" {
   mkdir -p "$HOME/.gradle/caches/junk"
   make_stub pgrep 0            # every probe reports "running"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (in use"*".gradle/caches"* ]] || false
   [ -d "$HOME/.gradle/caches/junk" ]
@@ -43,7 +43,7 @@ teardown () { teardown_fake_home; }
 @test "unknown process state fails closed (pgrep errors => skip)" {
   mkdir -p "$HOME/Library/Developer/Xcode/DerivedData/junk"
   make_stub pgrep 2            # rc 2 = probe error, not "no match"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [[ "$output" == *"skipped (process state unknown"*"DerivedData"* ]] || false
   [ -d "$HOME/Library/Developer/Xcode/DerivedData/junk" ]
 }
@@ -51,7 +51,7 @@ teardown () { teardown_fake_home; }
 @test "idle processes let deletion proceed" {
   mkdir -p "$HOME/.gradle/caches/junk"
   make_stub pgrep 1            # rc 1 = no matching process
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ ! -e "$HOME/.gradle/caches" ]
 }
 
@@ -75,7 +75,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$HOME/Library/Caches/composer/files" "$HOME/.composer/cache/repo" \
            "$HOME/.gem/ruby/3.3.0/cache"
   touch "$HOME/.gem/ruby/3.3.0/cache/foo-1.0.gem"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ ! -e "$HOME/Library/Caches/composer" ]
   [ ! -e "$HOME/.composer/cache" ]
   [ ! -e "$HOME/.gem/ruby/3.3.0/cache" ]
@@ -85,7 +85,7 @@ teardown () { teardown_fake_home; }
   PB="$HOME/Library/Group Containers/group.com.apple.coreservices.useractivityd/shared-pasteboard"
   mkdir -p "$PB/old-item" "$PB/fresh-item"
   touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/old-item"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ ! -e "$PB/old-item" ]
   [ -d "$PB/fresh-item" ]
 }
@@ -101,7 +101,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$PB/stuck-item"
   touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/stuck-item"
   chmod 555 "$PB"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   chmod 755 "$PB"   # restore so bats' teardown can rm -rf the fake HOME
   # `|| false` for the same bash-3.2 errexit-masking reason as the conda test
   # above: without it, the trailing `[ -d ]` (true regardless of whether the
@@ -119,7 +119,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$PB/mixed-item"
   touch "$PB/mixed-item/fresh-file"    # default mtime: just now (< 60min)
   touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/mixed-item"   # dir itself looks old
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ -d "$PB/mixed-item" ]
   [ -e "$PB/mixed-item/fresh-file" ]
@@ -130,7 +130,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$PB/fully-old-item"
   touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/fully-old-item/inner-file"
   touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/fully-old-item"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ ! -e "$PB/fully-old-item" ]
 }
@@ -144,7 +144,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$PB/locked-item/unreadable-sub"
   touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/locked-item/unreadable-sub" "$PB/locked-item"
   chmod 000 "$PB/locked-item/unreadable-sub"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   chmod 755 "$PB/locked-item/unreadable-sub"   # restore before teardown rm -rf
   [ "$status" -eq 0 ]
   [ -d "$PB/locked-item" ]
@@ -155,7 +155,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$PB/old-item" "$PB/other-old-item"
   touch -t "$(date -v-2H +%Y%m%d%H%M)" "$PB/old-item" "$PB/other-old-item"
   printf '%s\n' "$PB/old-item" > "$MSC_WHITELIST_FILE"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [[ "$output" == *"skipped (whitelisted): $PB/old-item"* ]] || false
   [ -d "$PB/old-item" ]
   [ ! -e "$PB/other-old-item" ]
@@ -164,7 +164,7 @@ teardown () { teardown_fake_home; }
 @test "conda cleanup runs the owner command, never rm" {
   make_stub conda 0
   mkdir -p "$HOME/miniconda3/pkgs/somepkg"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   # bash 3.2: a bare `[[ ]]` failure does not trigger errexit unless it is the
   # final statement, so `|| false` forces the failure to actually abort the
   # test (otherwise the trailing `[ -d ]` below — true regardless of whether
@@ -176,7 +176,7 @@ teardown () { teardown_fake_home; }
 @test "unlogged deletions are refused by default (exit 3), cache survives (F8)" {
   mkdir -p "$HOME/.npm/junk" "$HOME/Library"
   : > "$HOME/Library/Logs"   # a FILE where a dir is needed -> log_writable fails
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 3 ]
   [[ "$output" == *"Refusing to delete unlogged"* ]] || false
   [ -d "$HOME/.npm/junk" ]
@@ -185,7 +185,7 @@ teardown () { teardown_fake_home; }
 @test "MSC_ALLOW_UNLOGGED=1 overrides the abort-if-unlogged refusal (F8)" {
   mkdir -p "$HOME/.npm/junk" "$HOME/Library"
   : > "$HOME/Library/Logs"
-  MSC_ALLOW_UNLOGGED=1 run bash "$SCRIPTS/clean-safe.sh"
+  MSC_ALLOW_UNLOGGED=1 run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"will NOT be recorded"* ]] || false
   [ ! -e "$HOME/.npm" ]
@@ -193,7 +193,7 @@ teardown () { teardown_fake_home; }
 
 @test "wave-2 safe paths: android cache and pypoetry cache are cleared (A1)" {
   mkdir -p "$HOME/.android/cache/x" "$HOME/Library/Caches/pypoetry/x"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/.android/cache" ]
   [ ! -e "$HOME/Library/Caches/pypoetry" ]
@@ -211,7 +211,7 @@ teardown () { teardown_fake_home; }
   [ -e "$DR/old.crash" ]
   [ -e "$DR/fresh.crash" ]
 
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ ! -e "$DR/old.crash" ]
   [ -e "$DR/fresh.crash" ]
@@ -223,7 +223,7 @@ teardown () { teardown_fake_home; }
   touch "$DR/foo.ips"
   touch "$DR/README.txt"
   touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/foo.ips" "$DR/README.txt" "$DR/notes"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ ! -e "$DR/foo.ips" ]     # a real report artifact, old — removed
   [ -e "$DR/README.txt" ]   # not a report artifact — survives even though old
@@ -235,7 +235,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$DR/Retired"
   touch "$DR/Retired/old.crash"
   touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired/old.crash"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"removed"*"old.crash"*"crash report >30d"* ]] || false
   [ ! -e "$DR/Retired/old.crash" ]
@@ -247,7 +247,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$DR/Retired"
   touch "$DR/Retired/fresh.crash"          # mtime now
   touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired"   # dir's own mtime is old
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ -e "$DR/Retired/fresh.crash" ]         # child mtime, not the dir's, governs
   [ -d "$DR/Retired" ]
@@ -259,7 +259,7 @@ teardown () { teardown_fake_home; }
   touch "$DR/Retired/keep.crash"
   touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired/keep.crash"
   printf '%s\n' "$DR/Retired/keep.crash" > "$MSC_WHITELIST_FILE"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (whitelisted): $DR/Retired/keep.crash"* ]] || false
   [ -e "$DR/Retired/keep.crash" ]
@@ -280,7 +280,7 @@ teardown () { teardown_fake_home; }
   touch "$DR/Retired/blocked.crash"
   touch -t "$(date -v-40d +%Y%m%d%H%M)" "$DR/Retired/blocked.crash"
   chmod 555 "$DR/Retired"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   chmod 755 "$DR/Retired"   # restore before teardown's rm -rf
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (protected or in use): $DR/Retired/blocked.crash"* ]] || false
@@ -293,7 +293,7 @@ teardown () { teardown_fake_home; }
   mkdir -p "$HOME/.npm/junk" "$HOME/.gradle/caches/junk"
   printf '~/.npm\n' > "$MSC_WHITELIST_FILE"
   make_stub pgrep 0   # gradle daemon "running" -> in-use skip
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"Skipped:"* ]] || false
   [[ "$output" == *"1 in-use"* ]] || false

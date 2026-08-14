@@ -31,7 +31,7 @@ mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
 
 @test "clean-safe keeps the 2 newest DeviceSupport versions, removes the rest" {
   mk_ds
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ -d "$DS/18.5 (22F76)" ]
   [ -d "$DS/17.5 (21F79)" ]
@@ -50,7 +50,7 @@ mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
 @test "whitelisting one DeviceSupport version dir protects it while keep-N still applies to the rest (I5)" {
   mk_ds
   printf '%s\n' "$DS/16.0 (20A362)" > "$MSC_WHITELIST_FILE"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (whitelisted): $DS/16.0 (20A362)"* ]] || false
   [ -d "$DS/16.0 (20A362)" ]      # whitelisted old version survives
@@ -67,7 +67,7 @@ mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
   # the code path the fix protects.
   mk_ds
   touch -t "$(date -v-1H +%Y%m%d%H%M)" "$DS/leftover.plist"   # newer mtime than all 4 version dirs
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ -d "$DS/18.5 (22F76)" ]        # 2 newest real dirs still kept
   [ -d "$DS/17.5 (21F79)" ]
@@ -81,7 +81,7 @@ mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
   mkdir -p "$DS/16.0 (20A362)" "$DS/17.0 (21A326)" "$DS/18.0 (22B331)"
   weird_name="$(printf '19.0\n(fake)')"
   mkdir -p "$DS/$weird_name"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   # normal retention outcome (keep 2 newest of the 3 well-formed dirs) is
   # unaffected by the weird dir's presence — it must not "outrank" 18.0/17.0
@@ -113,7 +113,7 @@ mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
   touch -t "$(date -v-3d +%Y%m%d%H%M)" "$DS/16.0 (oldest)"
   touch -t "$(date -v-2d +%Y%m%d%H%M)" "$DS/17.0 (mid)"
   touch -t "$(date -v-1d +%Y%m%d%H%M)" "$DS/18.0 (newest)"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   chmod 755 "$DS/16.0 (oldest)/protected"   # restore before teardown rm -rf
   [ "$status" -eq 0 ]
   [[ "$output" == *"partially removed"* ]] || false
@@ -132,7 +132,7 @@ mk_ds () {   # four version dirs. mtimes are DELIBERATELY inverted from
   DS="$HOME/Library/Developer/Xcode/iOS DeviceSupport"
   mkdir -p "$(dirname "$DS")"
   ln -s "$REAL" "$DS"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (symlink base)"* ]] || false
   [ -d "$REAL/16.0 (20A362)" ]
@@ -175,7 +175,7 @@ mk_claude () {
   mk_claude
   mkdir -p "$VR/1.0.11/bin"
   ln -s "$VR/1.0.11/bin/claude" "$HOME/.local/bin/claude"
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ -d "$VR/1.0.11" ]      # active — even though not newest
   [ -d "$VR/1.0.12" ]      # 1 newest non-active kept
   [ ! -e "$VR/1.0.10" ]    # removed
@@ -189,7 +189,7 @@ mk_claude () {
   mkdir -p "$VR/1.0.11/bin"
   ln -s "$VR/1.0.11/bin/claude" "$HOME/.local/bin/claude"
   touch -t "$(date -v-1H +%Y%m%d%H%M)" "$VR/leftover.plist"   # newer mtime, but not a version dir
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ -d "$VR/1.0.11" ]      # active
   [ -d "$VR/1.0.12" ]      # 1 newest non-active kept — must survive even though
@@ -201,14 +201,14 @@ mk_claude () {
 @test "broken active symlink fails closed: agent versions untouched" {
   mk_claude
   ln -s "$VR/9.9.9/bin/claude" "$HOME/.local/bin/claude"   # dangling
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ -d "$VR/1.0.10" ]; [ -d "$VR/1.0.11" ]; [ -d "$VR/1.0.12" ]
   [[ "$output" == *"skipped (active version unknown): Claude Code"* ]]
 }
 
 @test "missing symlink fails closed too" {
   mk_claude
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ -d "$VR/1.0.10" ]
 }
 
@@ -229,7 +229,7 @@ EOF
 @test "fallback path (sort -V unsupported) still keeps the 2 newest DeviceSupport versions by version order (portable fallback)" {
   mk_ds
   stub_sort_without_dash_v
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [ -d "$DS/18.5 (22F76)" ]
   [ -d "$DS/17.5 (21F79)" ]

@@ -66,7 +66,7 @@ EOF
   mkdir -p "$HOME/real-cache/data"
   ln -s "$HOME/real-cache" "$HOME/.npm"
   make_stub brew 1; make_stub xcode-select 1
-  run bash "$SCRIPTS/clean-safe.sh"
+  run bash "$SCRIPTS/clean-safe.sh" --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (symlink"* ]] || false
   [ -d "$HOME/real-cache/data" ]

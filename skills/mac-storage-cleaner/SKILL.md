@@ -68,9 +68,19 @@ files, skips anything macOS protects (reporting rather than failing), runs
 deletion, and prints what it reclaimed. If the user only wanted specific items,
 delete those directly instead.
 
-To preview first (recommended when the user hesitates or asks what will go): add
-`--dry-run` — full preview with sizes, zero deletion, zero log writes. Guards and
-whitelist run identically in both modes, so the preview always matches reality.
+**Preview is the default.** Running `clean-safe.sh` with no argument previews
+everything with sizes and deletes nothing; `--apply` performs the deletion.
+Guards and the whitelist run identically in both modes, so the preview always
+matches reality. Show the user the preview before you run `--apply` — and always
+do so on agents that execute shell commands without asking them first (opencode,
+OpenClaw and anything configured to auto-run). `MSC_DRY_RUN=1` forces preview
+even when `--apply` is passed.
+
+```bash
+D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
+bash "$D/scripts/clean-safe.sh" --apply
+```
 
 The safe tier now keeps the 2 newest DeviceSupport versions
 (MSC_DEVICE_SUPPORT_KEEP), keeps the active + 1 previous version of
