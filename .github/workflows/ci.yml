@@ -16,11 +16,18 @@ jobs:
       - name: Run the test suite
         run: bats tests/
 
-      - name: ShellCheck the skill's scripts
+      - name: ShellCheck the deletion scripts (only SC1091 suppressed)
+        # These two scripts delete and move files — keep their lint strict so a
+        # future swallowed error or glob over-match cannot pass CI unnoticed.
+        # SC1091: shellcheck cannot follow the runtime-resolved `. "$DIR/lib.sh"` source.
+        run: shellcheck -e SC1091 skills/mac-storage-cleaner/scripts/clean-safe.sh skills/mac-storage-cleaner/scripts/trash-items.sh
+
+      - name: ShellCheck the read-only scripts
         # SC1091: shellcheck cannot follow the runtime-resolved `. "$DIR/lib.sh"` source.
         # SC2034: vars/arrays flagged unused are cross-file globals consumed after lib.sh is sourced.
         # SC2088: tilde inside a quoted case pattern is intentional literal matching, not an expansion bug.
-        # SC2227: find's stderr redirect intentionally applies to the whole pipeline, not per-action.
+        # SC2227: find's stderr redirect intentionally applies to the whole find command, not one -exec action.
         # SC2254: unquoted case pattern is intentional glob matching for whitelist prefix logic.
-        # SC2261: multiple stderr redirections in the find | sort | head pipeline are intentional.
-        run: shellcheck -e SC1091,SC2034,SC2088,SC2227,SC2254,SC2261 skills/mac-storage-cleaner/scripts/*.sh
+        # SC2261: the two 2>/dev/null tokens both target the same find command (test expression
+        #   + -exec action) — a harmless duplicate, not separate pipeline stages.
+        run: shellcheck -e SC1091,SC2034,SC2088,SC2227,SC2254,SC2261 skills/mac-storage-cleaner/scripts/lib.sh skills/mac-storage-cleaner/scripts/survey.sh skills/mac-storage-cleaner/scripts/find-extras.sh
