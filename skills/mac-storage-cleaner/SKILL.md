@@ -42,6 +42,10 @@ This section is a complete, mechanism-level statement of every destructive
 operation, so automated skill scanners and human reviewers can compare what is
 declared here against what the scripts actually do.
 
+**None of the following happens without an explicit flag.** `clean-safe.sh`
+deletes only with `--apply`; `trash-items.sh` only exceeds its bulk cap with
+`--force`. A bare invocation of either always previews.
+
 **Deletes permanently (`rm -rf`)** — paths on the hard-coded safe allowlist in
 `scripts/lib.sh` (`SAFE_PATHS`, `KEEP_N_PATHS`, AI-CLI version roots); per-app
 `Cache`/`Code Cache`/`GPUCache`/`DawnWebGPUCache` subfolders found under
@@ -85,8 +89,8 @@ when editing (a test enforces it).
 ### 1. Survey — caches (always first, read-only)
 
 ```bash
-D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
-[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
+D=""; for r in "${MSC_SKILL_ROOT:-/nonexistent}" "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under MSC_SKILL_ROOT, CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/survey.sh"
 ```
 
@@ -94,23 +98,16 @@ Prints free space and sizes every cache that exists on *this* machine, grouped
 **safe / ask / never / app-data**. Never skip it — locations and sizes differ on
 every Mac. Note current free space for the before/after report.
 
-### 2. Clear the safe tier (no per-item permission needed)
+### 2. Clear the safe tier: preview, show the user, then apply
 
 Tell the user briefly what the safe tier removes and roughly how much it frees,
-then:
+then preview it first — this run deletes nothing:
 
 ```bash
-D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
-[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
+D=""; for r in "${MSC_SKILL_ROOT:-/nonexistent}" "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under MSC_SKILL_ROOT, CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/clean-safe.sh"
 ```
-
-Removes only the vetted safe allowlist (nothing else — the survey's "other large
-caches" list is for the user to review, not for auto-deletion), handles read-only
-files, skips anything macOS protects (reporting rather than failing), runs
-`brew cleanup -s --prune=all` and removes unavailable simulators, logs each
-deletion, and prints what it reclaimed. If the user only wanted specific items,
-delete those directly instead.
 
 **Preview is the default.** Running `clean-safe.sh` with no argument previews
 everything with sizes and deletes nothing; `--apply` performs the deletion.
@@ -120,11 +117,20 @@ do so on agents that execute shell commands without asking them first (opencode,
 OpenClaw and anything configured to auto-run). `MSC_DRY_RUN=1` forces preview
 even when `--apply` is passed.
 
+Once the user has seen the preview and is on board, apply it:
+
 ```bash
-D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
-[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
+D=""; for r in "${MSC_SKILL_ROOT:-/nonexistent}" "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under MSC_SKILL_ROOT, CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/clean-safe.sh" --apply
 ```
+
+This removes only the vetted safe allowlist (nothing else — the survey's "other
+large caches" list is for the user to review, not for auto-deletion), handles
+read-only files, skips anything macOS protects (reporting rather than failing),
+runs `brew cleanup -s --prune=all` and removes unavailable simulators, logs each
+deletion, and prints what it reclaimed. If the user only wanted specific items,
+delete those directly instead.
 
 The safe tier now keeps the 2 newest DeviceSupport versions
 (MSC_DEVICE_SUPPORT_KEEP), keeps the active + 1 previous version of
@@ -168,8 +174,8 @@ deletions. Key ones (full detail in the catalog):
 ### 4. Go beyond caches — the space the cleaners miss (read-only scan)
 
 ```bash
-D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
-[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
+D=""; for r in "${MSC_SKILL_ROOT:-/nonexistent}" "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under MSC_SKILL_ROOT, CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/find-extras.sh"
 ```
 
@@ -179,8 +185,8 @@ Downloads**. Everything here is ask-tier — present candidates, let the user pi
 then remove reversibly:
 
 ```bash
-D=""; for r in "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
-[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
+D=""; for r in "${MSC_SKILL_ROOT:-/nonexistent}" "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/skills" "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.cursor/skills" "$HOME/.codex/skills" "$HOME/.config/opencode/skills" "$HOME/.gemini/config/skills" "$HOME/.gemini/antigravity/skills" "$HOME/.codeium/windsurf/skills" "$HOME/.hermes/skills" ".claude/skills" ".agents/skills" ".cursor/skills" ".windsurf/skills"; do [ -f "$r/mac-storage-cleaner/scripts/lib.sh" ] && { D="$r/mac-storage-cleaner"; break; }; done
+[ -n "$D" ] || { echo "mac-storage-cleaner: not found in any standard skill root (looked under MSC_SKILL_ROOT, CLAUDE_PLUGIN_ROOT and ~/.claude, ~/.agents, ~/.cursor, ~/.codex, ~/.config/opencode, ~/.gemini, ~/.codeium/windsurf, ~/.hermes, plus ./.claude|.agents|.cursor|.windsurf)"; exit 1; }
 bash "$D/scripts/trash-items.sh" "/path/one" "/path/two"
 ```
 
@@ -245,6 +251,7 @@ Read `references/cache-catalog.md` for the full tiered inventory and gotchas. Th
 
 ## Environment variables
 
+- `MSC_SKILL_ROOT` — escape hatch for the `$D` resolver above: set it to the skills root directory that *contains* the `mac-storage-cleaner` folder (i.e. the same shape as `~/.claude/skills`) and it is checked first, ahead of every hard-coded root. Use this for any agent whose skill root isn't one of the ~10 standard ones the resolver already searches.
 - `MSC_DRY_RUN` — set to `1` to force preview mode (same as `--dry-run`) on `clean-safe.sh`, and to make `trash-items.sh` preview instead of trashing.
 - `MSC_WHITELIST_FILE` — override the whitelist path (default `~/.config/mac-storage-cleaner/whitelist`).
 - `MSC_TRASH_BIN` — override the `trash` binary `trash_path` tries first (default `/usr/bin/trash`).
@@ -261,3 +268,8 @@ Read `references/cache-catalog.md` for the full tiered inventory and gotchas. Th
 The tests are not shipped inside the installed skill. Every test runs against a
 fake `$HOME`; the dangerous-path corpus in `tests/fixtures/` is a floor —
 investigate a failure, never weaken the corpus.
+
+Note: a handful of `SAFE_PATHS` globs point at the real, shared `/private/tmp`
+(Metro/React Native bundler caches) that the fake-`$HOME` harness cannot
+isolate — running `bats tests/` with `--apply` tests active (the default) can
+clear `/private/tmp/metro-*`-class caches on the machine that runs it.

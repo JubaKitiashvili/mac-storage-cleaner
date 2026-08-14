@@ -36,15 +36,19 @@ default is no longer destructive.
 - Per-agent install matrix, per-agent safety table, and a telemetry disclosure in
   the README.
 
-### Deprecated
+### Removed
 - `dist/mac-storage-cleaner.skill` — built for a Claude Desktop upload flow that
   requires `.zip` and a ≤200-character description, so it was never installable
-  there. Removed next minor.
+  there.
 
 ### Testing
-- 120 tests (up from 89): resolver coverage for every documented install root,
-  the `--apply` gate, the blast-radius cap, frontmatter byte budget, manifest
-  parity, and a lint that `bash -n`s every command block in SKILL.md.
+- 131 tests (up from 89): resolver coverage for every documented install root
+  (including the `MSC_SKILL_ROOT` escape hatch), the `--apply` gate, the
+  blast-radius cap, frontmatter byte budget, manifest parity, a lint that
+  `bash -n`s every command block in SKILL.md, and a post-release fix wave
+  covering the `trash-items.sh` unknown-flag fail-open bug, `--force` consent
+  logging, honest unmeasurable-size reporting, and the `clean-safe.sh`
+  extra-argument gate.
 
 ## 2.0.6 — 2026-08-11
 

@@ -13,12 +13,20 @@ resolver_snippet () {
 }
 
 @test "every SKILL.md command block uses one byte-identical resolver" {
-  local n uniq
+  local n uniq gn guniq
   n=$(grep -c '^D=""; for r in ' "$SKILL_MD")
   # >= 4 rather than == 4: Task 3 adds a fifth block (the --apply variant).
   [ "$n" -ge 4 ] || { echo "expected >=4 resolver lines, found $n"; false; }
   uniq=$(grep '^D=""; for r in ' "$SKILL_MD" | sort -u | wc -l | tr -d ' ')
   [ "$uniq" -eq 1 ] || { echo "the resolver lines are not identical to each other"; false; }
+  # M14: the `D=""; for r in ...` line isn't the whole resolver — the guard
+  # line right below it (`[ -n "$D" ] || { ... exit 1; }`) is just as load-
+  # bearing (it's what fails loudly when the skill isn't found) and must
+  # drift in lockstep with the for-loop line, not silently diverge.
+  gn=$(grep -c '^\[ -n "\$D" \]' "$SKILL_MD")
+  [ "$gn" -eq "$n" ] || { echo "expected $n guard lines (one per resolver), found $gn"; false; }
+  guniq=$(grep '^\[ -n "\$D" \]' "$SKILL_MD" | sort -u | wc -l | tr -d ' ')
+  [ "$guniq" -eq 1 ] || { echo "the guard lines are not identical to each other"; false; }
 }
 
 @test "resolver finds the skill in every documented global root" {
@@ -52,6 +60,24 @@ resolver_snippet () {
   : > "$HOME/.claude/skills/mac-storage-cleaner/scripts/lib.sh"
   run bash -c "export CLAUDE_PLUGIN_ROOT='$pr'; $(resolver_snippet); printf '%s' \"\$D\""
   [ "$output" = "$pr/skills/mac-storage-cleaner" ]
+}
+
+@test "resolver honours MSC_SKILL_ROOT ahead of CLAUDE_PLUGIN_ROOT and every standard root (I2)" {
+  local esc="$HOME/wherever-this-agent-keeps-skills"
+  local pr="$HOME/plugin-root"
+  mkdir -p "$esc/mac-storage-cleaner/scripts" "$pr/skills/mac-storage-cleaner/scripts" \
+           "$HOME/.claude/skills/mac-storage-cleaner/scripts"
+  : > "$esc/mac-storage-cleaner/scripts/lib.sh"
+  : > "$pr/skills/mac-storage-cleaner/scripts/lib.sh"
+  : > "$HOME/.claude/skills/mac-storage-cleaner/scripts/lib.sh"
+  run bash -c "export MSC_SKILL_ROOT='$esc' CLAUDE_PLUGIN_ROOT='$pr'; $(resolver_snippet); printf '%s' \"\$D\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "$esc/mac-storage-cleaner" ]
+}
+
+@test "resolver's not-found error mentions MSC_SKILL_ROOT as the escape hatch (I2)" {
+  run bash -c "$(resolver_snippet)"
+  [[ "$output" == *"MSC_SKILL_ROOT"* ]] || false
 }
 
 @test "resolver fails loudly, not silently, when the skill is nowhere" {

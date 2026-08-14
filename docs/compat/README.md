@@ -18,9 +18,12 @@ The top three agents are re-verified every release.
 
 | Agent | Verified | Version | Resolution | Trigger | Gating |
 |---|---|---|---|---|---|
-| Claude Code | 2026-08-14 | see file | ✅ | ✅ | ✅ |
+| Claude Code | 2026-08-14 | see file | ✅ | ✅* | ✅ |
 | Codex CLI | — | — | — | — | — |
 | Cursor | — | — | — | — | — |
 | Windsurf | — | — | — | — | — |
 | Antigravity | — | — | — | — | — |
 | opencode | — | — | — | — | — |
+
+\* Not a controlled test of the fixed trigger prompt — see the "Trigger" row's
+evidence in [claude-code.md](claude-code.md) for what was actually verified.

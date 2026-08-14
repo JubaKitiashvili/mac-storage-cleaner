@@ -52,6 +52,13 @@ teardown () { teardown_fake_home; }
   [ -d "$HOME/.npm/junk" ] || false
 }
 
+@test "--apply --dry-run (extra argument) exits 2 and deletes nothing, instead of applying (M10)" {
+  run bash "$SCRIPTS/clean-safe.sh" --apply --dry-run
+  [ "$status" -eq 2 ]
+  [ -d "$HOME/.npm/junk" ] || { echo "extra-argument invocation deleted files"; false; }
+  [ ! -e "$HOME/Library/Logs/mac-storage-cleaner/operations.log" ] || false
+}
+
 @test "the preview summary tells the user how to actually apply" {
   run bash "$SCRIPTS/clean-safe.sh"
   [[ "$output" == *"--apply"* ]] || false

@@ -1,16 +1,16 @@
 # mac-storage-cleaner
 
 [![version](https://img.shields.io/github/v/tag/JubaKitiashvili/mac-storage-cleaner?label=version&style=flat-square)](https://github.com/JubaKitiashvili/mac-storage-cleaner/blob/main/CHANGELOG.md)
-[![tests](https://img.shields.io/badge/tests-120%20passing-brightgreen?style=flat-square)](#safety)
+[![tests](https://img.shields.io/badge/tests-131%20passing-brightgreen?style=flat-square)](#safety)
 [![platform](https://img.shields.io/badge/platform-macOS-black?style=flat-square)](#requirements)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![aitmpl](https://img.shields.io/badge/listed%20on-aitmpl.com-8A2BE2?style=flat-square)](https://aitmpl.com)
 
-**A Claude skill that safely reclaims disk space on a Mac — the trustworthy, transparent, reversible alternative to CleanMyMac and the dozens of "cleaner" apps.**
+**An agent skill that safely reclaims disk space on a Mac — the trustworthy, transparent, reversible alternative to CleanMyMac and the dozens of "cleaner" apps.**
 
-The problem with one-click cleaners isn't that they don't free space — it's that you can't *see* what they're about to delete or *undo* it if they're wrong. This skill flips that. It's driven by Claude, so it reasons about every location, shows you the plan before touching anything, deletes only what provably regenerates, moves anything riskier to the **Trash** (not `rm`), and **logs every action**.
+The problem with one-click cleaners isn't that they don't free space — it's that you can't *see* what they're about to delete or *undo* it if they're wrong. This skill flips that. It's driven by your AI coding agent (Claude Code, Codex, Cursor, Windsurf, opencode and more — see the install matrix below), so it reasons about every location, shows you the plan before touching anything, deletes only what provably regenerates, moves anything riskier to the **Trash** (not `rm`), and **logs every action**.
 
-> Just tell Claude *"my Mac is out of space"* (or *"clear my caches"*, *"what's eating my storage"* — it understands other languages too, including Georgian *"ადგილი აღარ მაქვს"*) and the skill takes over.
+> Just tell your agent *"my Mac is out of space"* (or *"clear my caches"*, *"what's eating my storage"* — it understands other languages too, including Georgian *"ადგილი აღარ მაქვს"*) and the skill takes over. Using Claude Code? Just tell Claude.
 
 ---
 
@@ -47,13 +47,14 @@ Full tiered inventory, exact reclaim commands, and edge-case notes live in [`ski
 - **No `sudo`** into system/SIP-protected areas.
 - **Every action logged** to `~/Library/Logs/mac-storage-cleaner/operations.log` (5 MB rotation) — and the scripts *refuse to delete unlogged* unless you explicitly override.
 - **Honest accounting**: partial removals reported as partial, unmeasurable sizes as `size?` (never fake zeros), survey totals exclude whitelisted items, APFS "purgeable" space explained instead of hand-waved.
-- **120 automated tests** (bats), including a 47-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests can never touch a real machine. Audited by an independent multi-model panel, then battle-tested through three external bot-review rounds (Greptile + cubic — 15 valid findings fixed, each with a regression test); bash 3.2-compatible (the version macOS ships).
+- **131 automated tests** (bats), including a 47-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests never touch your real home directory. Audited by an independent multi-model panel, then battle-tested through three external bot-review rounds (Greptile + cubic — 15 valid findings fixed, each with a regression test); bash 3.2-compatible (the version macOS ships).
 
 ### How safety works on your agent
 
 The skill's own guardrails (allowlist-only deletion, mechanically refused
 never-tier, Trash instead of `rm`, audit log) are identical everywhere. What
-differs is whether your agent asks before running a command:
+differs is whether your agent asks before running a command (as documented by
+each vendor, August 2026):
 
 | Agent | Before a destructive command |
 |---|---|
@@ -94,14 +95,17 @@ install, or `-a <agent>` to target one.
 | Antigravity | `npx skills add JubaKitiashvili/mac-storage-cleaner -a antigravity -g` | `~/.gemini/antigravity/skills/` |
 | opencode | `npx skills add JubaKitiashvili/mac-storage-cleaner -a opencode -g` | `~/.config/opencode/skills/` |
 | Hermes Agent | `hermes skills install JubaKitiashvili/mac-storage-cleaner/skills/mac-storage-cleaner` | `~/.hermes/skills/` |
-| OpenClaw | `openclaw skills install …` (see ClawHub listing) | OpenClaw skills dir |
+| OpenClaw | `openclaw skills install …` (see ClawHub listing) | `~/.agents/skills/` |
 | Manual | `git clone` then copy `skills/mac-storage-cleaner/` into any skills root | — |
 
-> **Deprecated:** `dist/mac-storage-cleaner.skill` remains for one release only.
-> It was built for Claude Desktop, which requires a `.zip` whose root is the
-> skill folder and caps skill descriptions at 200 characters — so it was never
-> installable there. Use the install commands above. The file will be removed in
-> the next minor release.
+Any agent not listed above still works: set `MSC_SKILL_ROOT` to the directory
+that contains the `mac-storage-cleaner` folder (e.g. its own skills root), and
+every resolver in SKILL.md checks it first, ahead of the standard roots above.
+
+> **Removed:** `dist/mac-storage-cleaner.skill` has been removed from the
+> repository. It was built for a Claude Desktop upload flow that requires a
+> `.zip` whose root is the skill folder and caps skill descriptions at 200
+> characters, so it was never installable there. Use the install commands above.
 
 ### Claude Desktop / claude.ai — not supported, and here's why
 

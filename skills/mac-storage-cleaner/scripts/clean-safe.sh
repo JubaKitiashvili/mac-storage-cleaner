@@ -14,6 +14,11 @@ load_whitelist
 # caches the user never saw proposed. --dry-run is still accepted as a no-op
 # alias, because it is what the previous docs, the aitmpl copy and muscle memory
 # use. An unrecognized argument still exits 2 rather than failing open.
+# More than one argument is rejected outright too (exit 2): only $1 was ever
+# inspected below, so e.g. `clean-safe.sh --apply --dry-run` matched the
+# --apply branch and deleted for real — the trailing --dry-run was silently
+# ignored instead of downgrading the run to a preview.
+[ "$#" -gt 1 ] && { echo "unknown argument: too many arguments (use --apply to delete; no argument or --dry-run previews)"; exit 2; }
 APPLY=0
 case "${1:-}" in
   "")        ;;

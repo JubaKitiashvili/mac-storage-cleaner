@@ -29,6 +29,27 @@ teardown () { teardown_fake_home; }
   [ ! -f "$HOME/junk/f1" ] || { echo "--force did not trash"; false; }
 }
 
+@test "--force logs a consent marker (I6)" {
+  : > "$HOME/junk/one"
+  run bash "$SCRIPTS/trash-items.sh" --force "$HOME/junk/one"
+  [ "$status" -eq 0 ]
+  grep -qE $'consent\t-\t--force' "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+}
+
+@test "a normal (non --force) run logs no consent marker (I6)" {
+  : > "$HOME/junk/two"
+  run bash "$SCRIPTS/trash-items.sh" "$HOME/junk/two"
+  [ "$status" -eq 0 ]
+  ! grep -qE $'consent\t-\t--force' "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+}
+
+@test "--force --dry-run does not log a consent marker (preview only) (I6)" {
+  : > "$HOME/junk/one"
+  run bash "$SCRIPTS/trash-items.sh" --force --dry-run "$HOME/junk/one"
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/Library/Logs/mac-storage-cleaner/operations.log" ]
+}
+
 @test "a batch under both caps is unaffected" {
   : > "$HOME/junk/one"
   run bash "$SCRIPTS/trash-items.sh" "$HOME/junk/one"
@@ -90,6 +111,23 @@ teardown () { teardown_fake_home; }
   [ "$status" -ne 4 ] || { echo "an unreadable path was refused instead of warned about: $output"; false; }
   [[ "$output" == *"NOT enforced"* ]] || { echo "no honest unmeasurable-size warning was printed: $output"; false; }
   grep -q "size-unmeasurable" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+}
+
+@test "a refused over-item-cap batch with an unmeasurable size reports size?, not a fake 0.0K (M9)" {
+  mkdir -p "$HOME/junk/blocked"
+  : > "$HOME/junk/blocked/secret"
+  chmod 000 "$HOME/junk/blocked"
+  local i paths=("$HOME/junk/blocked")
+  for i in $(seq 1 100); do
+    : > "$HOME/junk/m$i"
+    paths+=("$HOME/junk/m$i")
+  done
+  run bash "$SCRIPTS/trash-items.sh" "${paths[@]}"
+  chmod -R 755 "$HOME/junk/blocked" 2>/dev/null
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"Refusing a bulk operation"* ]] || false
+  [[ "$output" == *"Refusing a bulk operation: 101 item(s), size?"* ]] || { echo "$output"; false; }
+  [[ "$output" != *"0.0K"* ]] || { echo "printed a fake 0.0K instead of size?"; false; }
 }
 
 @test "a measurable over-limit batch still exits 4 (the unmeasurable-size flag must not short-circuit a real refusal)" {
