@@ -8,12 +8,18 @@
 # could not be trashed (permissions/TCC); 2 = nothing was moved or previewed
 # and at least one item was refused (all-refused, dry or real); 3 = refused
 # to run at all because the audit log isn't writable (see MSC_ALLOW_UNLOGGED
-# below).
+# below); 4 = refused as a bulk operation (see MSC_MAX_TRASH_ITEMS /
+# MSC_MAX_TRASH_GB and --force).
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/lib.sh"
 
-[ "$#" -eq 0 ] && { echo "usage: trash-items.sh <path> [<path> ...]  (exit 0=ok/previewed/missing-only, 1=a trash failed, 2=all refused & nothing moved/previewed, 3=audit log unwritable)"; exit 1; }
+# --force must be the first argument. It only ever relaxes the bulk-operation
+# cap below; it does not bypass path validation or the never-tier denials.
+FORCE=0
+[ "${1:-}" = "--force" ] && { FORCE=1; shift; }
+
+[ "$#" -eq 0 ] && { echo "usage: trash-items.sh [--force] <path> [<path> ...]  (exit 0=ok/previewed/missing-only, 1=a trash failed, 2=all refused & nothing moved/previewed, 3=audit log unwritable, 4=refused as a bulk operation)"; exit 1; }
 
 # MSC_DRY_RUN=1 is a REAL preview here, not just a log_op no-op: without this,
 # a caller that exports MSC_DRY_RUN=1 (e.g. following clean-safe.sh's
@@ -42,6 +48,37 @@ failed=0
 refused=0
 previewed=0
 missing=0
+if [ "$DRY" != 1 ]; then
+# Blast-radius cap. Some agents (opencode, OpenClaw) run shell commands with no
+# approval prompt, so a single call assembling "all my old downloads" could move
+# hundreds of a user's files at once. Count only ELIGIBLE paths — missing and
+# protected-refused paths are not the user's data leaving its place. One `du -sck`
+# gives the grand total in a single walk.
+MAX_ITEMS="${MSC_MAX_TRASH_ITEMS:-100}"
+MAX_GB="${MSC_MAX_TRASH_GB:-5}"
+case "$MAX_ITEMS" in ''|*[!0-9]*) MAX_ITEMS=100 ;; esac
+case "$MAX_GB"    in ''|*[!0-9]*) MAX_GB=5 ;; esac
+eligible_n=0
+eligible=()
+for p in "$@"; do
+  { [ -e "$p" ] || [ -L "$p" ]; } || continue
+  validate_target_path "$p" || continue
+  eligible+=("$p")
+  eligible_n=$((eligible_n + 1))
+done
+bulk_kb=0
+if [ "$eligible_n" -gt 0 ]; then
+  bulk_kb=$(du -sck "${eligible[@]}" 2>/dev/null | tail -1 | awk '{print $1}')
+  case "$bulk_kb" in ''|*[!0-9]*) bulk_kb=0 ;; esac
+fi
+if [ "$FORCE" != 1 ] && { [ "$eligible_n" -gt "$MAX_ITEMS" ] || [ "$bulk_kb" -gt $((MAX_GB * 1024 * 1024)) ]; }; then
+  echo "✗ Refusing a bulk operation: $eligible_n item(s), $(human_kb "$bulk_kb") (limits: $MAX_ITEMS items, ${MAX_GB}GB)."
+  echo "  This guard exists because some agents run shell commands without asking you first."
+  echo "  Review the list, then re-run the same command with --force as the first argument."
+  log_op refused-blast-radius "$(human_kb "$bulk_kb")" "$eligible_n item(s)"
+  exit 4
+fi
+fi
 for p in "$@"; do
   if [ ! -e "$p" ] && [ ! -L "$p" ]; then
     echo "  not found: $p"
@@ -108,7 +145,9 @@ echo "Log: $LOG_DIR/operations.log"
 # (an all-refused run — dry or real — signals failure; a run mixing a valid
 # path with a refused one still exits 0, since the valid path did/would move,
 # and a missing-only run also exits 0 — nothing failed or was refused, the
-# missing count is just called out above).
+# missing count is just called out above); 4 = refused as a bulk operation
+# (see MSC_MAX_TRASH_ITEMS / MSC_MAX_TRASH_GB and --force) — exited earlier,
+# above the main loop, before anything was moved.
 if [ "$failed" -gt 0 ]; then
   exit 1
 elif [ "$((moved + previewed))" -eq 0 ] && [ "$refused" -gt 0 ]; then
