@@ -76,3 +76,27 @@ teardown () { teardown_fake_home; }
   [[ "$output" == *"would trash"* ]] || false
   [ -f "$HOME/junk/h1" ] || false
 }
+
+@test "an unreadable path makes the size guard skip with an honest warning, not a fake zero" {
+  mkdir -p "$HOME/blocked"
+  : > "$HOME/blocked/secret"
+  chmod 000 "$HOME/blocked"
+  run bash "$SCRIPTS/trash-items.sh" "$HOME/blocked"
+  # Restore permissions before teardown regardless of where the item ended up
+  # (trashed into $HOME/.Trash, or left in place) — otherwise fake-HOME
+  # cleanup (rm -rf) cannot descend into the still-000 directory.
+  chmod -R 755 "$HOME/blocked" 2>/dev/null
+  chmod -R 755 "$HOME/.Trash" 2>/dev/null
+  [ "$status" -ne 4 ] || { echo "an unreadable path was refused instead of warned about: $output"; false; }
+  [[ "$output" == *"NOT enforced"* ]] || { echo "no honest unmeasurable-size warning was printed: $output"; false; }
+  grep -q "size-unmeasurable" "$HOME/Library/Logs/mac-storage-cleaner/operations.log"
+}
+
+@test "a measurable over-limit batch still exits 4 (the unmeasurable-size flag must not short-circuit a real refusal)" {
+  mkdir -p "$HOME/big2"
+  dd if=/dev/zero of="$HOME/big2/blob" bs=1m count=6 2>/dev/null
+  MSC_MAX_TRASH_GB=0 run bash "$SCRIPTS/trash-items.sh" "$HOME/big2/blob"
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"Refusing a bulk operation"* ]] || false
+  [ -f "$HOME/big2/blob" ] || false
+}

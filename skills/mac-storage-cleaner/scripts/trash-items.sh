@@ -67,16 +67,44 @@ for p in "$@"; do
   eligible_n=$((eligible_n + 1))
 done
 bulk_kb=0
+size_unknown=0
 if [ "$eligible_n" -gt 0 ]; then
-  bulk_kb=$(du -sck "${eligible[@]}" 2>/dev/null | tail -1 | awk '{print $1}')
-  case "$bulk_kb" in ''|*[!0-9]*) bulk_kb=0 ;; esac
+  # Capture du's OWN exit status, not a pipeline's: `du_out=$(du ...)` is a
+  # single command substitution around ONE command (no internal pipe), so $?
+  # right after it is genuinely du's rc. `${PIPESTATUS[0]}` cannot be used
+  # here instead — PIPESTATUS does not cross a command-substitution subshell
+  # boundary (verified: `x=$(false | true); echo "${PIPESTATUS[*]}"` prints
+  # `0`, the outer assignment's own status, not the inner pipe's — in bash
+  # 3.2 or later). A permission-denied path makes du print a well-formed but
+  # WRONG "0\ttotal" while still exiting non-zero, so the captured rc is the
+  # only reliable signal for that case. The tail/awk extraction below now
+  # runs on already-captured text, not a second live subprocess pipe, so it
+  # needs no exit-status handling of its own.
+  du_out=$(du -sck "${eligible[@]}" 2>/dev/null)
+  du_rc=$?
+  bulk_kb=$(printf '%s\n' "$du_out" | tail -1 | awk '{print $1}')
+  # An empty/non-numeric total means du gave us nothing usable — never fake
+  # that as a trustworthy zero (honest-accounting: report size? on an
+  # unmeasurable path, never a silent 0). A genuinely successful zero (every
+  # eligible path measured and truly empty) is already a valid digit string
+  # and never reaches this branch, so it is never mistaken for "unmeasurable".
+  case "$bulk_kb" in ''|*[!0-9]*) bulk_kb=0; size_unknown=1 ;; esac
+  [ "$du_rc" -ne 0 ] && size_unknown=1
 fi
-if [ "$FORCE" != 1 ] && { [ "$eligible_n" -gt "$MAX_ITEMS" ] || [ "$bulk_kb" -gt $((MAX_GB * 1024 * 1024)) ]; }; then
+if [ "$FORCE" != 1 ] && { [ "$eligible_n" -gt "$MAX_ITEMS" ] || { [ "$size_unknown" != 1 ] && [ "$bulk_kb" -gt $((MAX_GB * 1024 * 1024)) ]; }; }; then
   echo "✗ Refusing a bulk operation: $eligible_n item(s), $(human_kb "$bulk_kb") (limits: $MAX_ITEMS items, ${MAX_GB}GB)."
   echo "  This guard exists because some agents run shell commands without asking you first."
   echo "  Review the list, then re-run the same command with --force as the first argument."
   log_op refused-blast-radius "$(human_kb "$bulk_kb")" "$eligible_n item(s)"
   exit 4
+fi
+# Size was unmeasurable (some eligible path is unreadable) — fail open, not
+# closed: over-refusing on a transient permission hiccup would just push
+# users toward --force, which also disables the item cap. Say so honestly
+# instead of silently proceeding as if the batch were confirmed small.
+if [ "$size_unknown" = 1 ]; then
+  echo "⚠ Could not fully measure this batch (some paths are unreadable) — the ${MAX_GB}GB size guard was NOT enforced for this run. The $MAX_ITEMS-item limit still applies."
+  log_op size-unmeasurable "?" "$eligible_n item(s)"
 fi
 fi
 for p in "$@"; do
