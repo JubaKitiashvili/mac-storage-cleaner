@@ -1,7 +1,7 @@
 # mac-storage-cleaner
 
 [![version](https://img.shields.io/github/v/tag/JubaKitiashvili/mac-storage-cleaner?label=version&style=flat-square)](https://github.com/JubaKitiashvili/mac-storage-cleaner/blob/main/CHANGELOG.md)
-[![tests](https://img.shields.io/badge/tests-131%20passing-brightgreen?style=flat-square)](#safety)
+[![tests](https://img.shields.io/badge/tests-134%20passing-brightgreen?style=flat-square)](#safety)
 [![platform](https://img.shields.io/badge/platform-macOS-black?style=flat-square)](#requirements)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![aitmpl](https://img.shields.io/badge/listed%20on-aitmpl.com-8A2BE2?style=flat-square)](https://aitmpl.com)
@@ -54,7 +54,7 @@ Full tiered inventory, exact reclaim commands, and edge-case notes live in [`ski
 - **No `sudo`** into system/SIP-protected areas.
 - **Every action logged** to `~/Library/Logs/mac-storage-cleaner/operations.log` (5 MB rotation) — and the scripts *refuse to delete unlogged* unless you explicitly override.
 - **Honest accounting**: partial removals reported as partial, unmeasurable sizes as `size?` (never fake zeros), survey totals exclude whitelisted items, APFS "purgeable" space explained instead of hand-waved.
-- **131 automated tests** (bats), including a 47-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests never touch your real home directory. Audited by an independent multi-model panel, then battle-tested through three external bot-review rounds (Greptile + cubic — 15 valid findings fixed, each with a regression test); bash 3.2-compatible (the version macOS ships).
+- **134 automated tests** (bats), including a 47-entry dangerous-path corpus where every entry *must* be refused, adversarial symlink cases, and a fake-`$HOME` harness so tests never touch your real home directory. Audited by an independent multi-model panel, then battle-tested through three external bot-review rounds (Greptile + cubic — 15 valid findings fixed, each with a regression test); bash 3.2-compatible (the version macOS ships).
 
 ### How safety works on your agent
 
