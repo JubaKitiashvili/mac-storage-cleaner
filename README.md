@@ -6,24 +6,31 @@
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![aitmpl](https://img.shields.io/badge/listed%20on-aitmpl.com-8A2BE2?style=flat-square)](https://aitmpl.com)
 
-**An agent skill that safely reclaims disk space on a Mac — the trustworthy, transparent, reversible alternative to CleanMyMac and the dozens of "cleaner" apps.**
+**A macOS disk cleaner that shows you everything before it deletes anything — and can't touch your Photos library, iOS backups, keychains or SSH keys even if it's told to.**
 
-The problem with one-click cleaners isn't that they don't free space — it's that you can't *see* what they're about to delete or *undo* it if they're wrong. This skill flips that. It's driven by your AI coding agent (Claude Code, Codex, Cursor, Windsurf, opencode and more — see the install matrix below), so it reasons about every location, shows you the plan before touching anything, deletes only what provably regenerates, moves anything riskier to the **Trash** (not `rm`), and **logs every action**.
+It's five bash scripts. Run them yourself, or let an AI coding agent drive them (Claude Code, Codex, Cursor, Windsurf, opencode and ~70 more — see the install matrix). Either way: it previews by default, auto-deletes only a hand-vetted allowlist of regenerable caches, moves anything riskier to the **Trash** instead of `rm`, and writes every action to an audit log.
 
-> Just tell your agent *"my Mac is out of space"* (or *"clear my caches"*, *"what's eating my storage"* — it understands other languages too, including Georgian *"ადგილი აღარ მაქვს"*) and the skill takes over. Using Claude Code? Just tell Claude.
+The interesting part isn't the disk space. It's that you can hand an autonomous agent delete permissions on your home directory and *know* what it cannot do — because the limits are enforced in code, with a property test proving the allowlist and the deny list can never overlap, not asserted in a privacy policy.
+
+> Run `bash skills/mac-storage-cleaner/scripts/survey.sh` for a read-only tour of what's eating your disk. Or tell your agent *"my Mac is out of space"* — in any language, including Georgian *"ადგილი აღარ მაქვს"* — and it takes over.
+
+Independently scanned on the [skills.sh registry](https://www.skills.sh/jubakitiashvili/mac-storage-cleaner/mac-storage-cleaner): **Gen Agent Trust Hub — Pass · Socket — Pass · Snyk — Pass.**
 
 ---
 
 ## Why it's different
 
-| | Typical cleaners | mac-storage-cleaner |
+CleanMyMac now ships a [free CLI](https://github.com/MacPaw/cleanmymac-cli) that covers developer caches too, so "free alternative" isn't the pitch. This is:
+
+| | Typical cleaners (GUI or CLI) | mac-storage-cleaner |
 |---|---|---|
-| Shows what it'll delete first | sometimes | **always** (read-only survey) |
-| Reversible | rarely | **yes** — anything non-cache goes to Trash |
-| Auto-deletes | broad, opaque | **only a vetted allowlist of pure caches** |
-| Audit trail | no | **every deletion logged** |
-| Finds app leftovers / big files | paid feature | **built in** |
-| Trust model | "just trust the app" | **it reasons and explains, you decide** |
+| Source you can audit | closed | **MIT, 5 readable bash scripts** |
+| Shows what it'll delete first | sometimes | **always** — preview is the default, `--apply` is opt-in |
+| Reversible | rarely | **yes** — anything non-cache goes to the Trash, not `rm` |
+| What it refuses to touch | a policy document | **a deny list enforced in code**, with a 47-entry corpus test |
+| Audit trail | no | **every action logged**, and it refuses to delete unlogged |
+| Telemetry | usually on by default | **none — the scripts make no network calls at all** |
+| Bulk-delete brakes | none | **refuses >100 items or 5 GB without `--force`** |
 
 ## How it works
 
@@ -75,7 +82,27 @@ approves*.
 
 ## Install
 
-**Any agent — one command:**
+### No agent needed — it's just bash
+
+The scripts are the product; the agent is one way to drive them. Nothing here
+requires an AI tool, a network connection, or `sudo`:
+
+```bash
+git clone https://github.com/JubaKitiashvili/mac-storage-cleaner.git
+cd mac-storage-cleaner/skills/mac-storage-cleaner
+
+bash scripts/survey.sh              # read-only: what's actually eating your disk
+bash scripts/clean-safe.sh          # preview — shows every path, deletes nothing
+bash scripts/clean-safe.sh --apply  # do it
+bash scripts/find-extras.sh         # app leftovers, big files, stale installers
+```
+
+Requires only what macOS already ships (`bash` 3.2, `du`, `df`, `find`,
+`osascript`). What an agent adds is judgment: reading the survey, deciding which
+"ask" items matter for *your* machine, and explaining the trade-offs — the parts
+a shell script can't do.
+
+### With an agent — one command
 
 ```bash
 npx skills add JubaKitiashvili/mac-storage-cleaner

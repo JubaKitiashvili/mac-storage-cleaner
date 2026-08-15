@@ -1,0 +1,6 @@
+{
+  "name": "mac-storage-cleaner",
+  "description": "macOS disk cleaner: previews everything, auto-deletes only vetted caches, moves anything riskier to the Trash, refuses to touch Photos/backups/keychains/SSH keys, and logs every deletion.",
+  "version": "3.0.0",
+  "contextFileName": "skills/mac-storage-cleaner/SKILL.md"
+}
