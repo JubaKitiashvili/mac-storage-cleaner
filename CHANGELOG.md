@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.1 — 2026-08-15
+
+### Fixed
+- **`trash-items.sh` size cap could silently fail to fire.** `MSC_MAX_TRASH_GB`
+  (and `MSC_MAX_TRASH_ITEMS`) were validated as all-digits, but an all-digit
+  string like `08` is an invalid octal literal in bash arithmetic. That made
+  `$((MAX_GB * 1024 * 1024))` abort with `value too great for base`, which
+  made the enclosing size-cap `if` never take either branch — a fail-open in
+  a safety guard. Both limits are now normalized to decimal (`$((10#$VAR))`)
+  right after validation, so every later use — arithmetic and the
+  user-facing refusal message alike — sees a clean decimal instead of a
+  value that could error out or print as `08GB`.
+
 ## 3.0.0 — 2026-08-14
 
 Cross-agent release: the skill now runs on every major AI coding agent, and its

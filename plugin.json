@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "mac-storage-cleaner",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "macOS disk cleaner that previews before it deletes: auto-clears only a vetted allowlist of caches, moves anything riskier to the Trash, mechanically refuses Photos libraries, iOS backups, keychains and SSH keys, and logs every deletion.",
   "author": "Juba Kitiashvili",
   "homepage": "https://github.com/JubaKitiashvili/mac-storage-cleaner",

@@ -1,6 +1,6 @@
 {
   "name": "mac-storage-cleaner",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Trust-first macOS disk cleaner: allowlist-only auto-clean, mechanically enforced never-tier, reversible Trash removals, preview by default, audit log.",
   "author": "Juba Kitiashvili",
   "license": "MIT",

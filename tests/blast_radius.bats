@@ -138,3 +138,35 @@ teardown () { teardown_fake_home; }
   [[ "$output" == *"Refusing a bulk operation"* ]] || false
   [ -f "$HOME/big2/blob" ] || false
 }
+
+@test "MSC_MAX_TRASH_GB=08 does not trip bash's 'value too great for base' octal bug on a small batch" {
+  # A leading-zero all-digit value like 08 passes the all-digits validation
+  # but is an invalid octal literal in bash arithmetic. Before the 10# fix,
+  # $((MAX_GB * 1024 * 1024)) would abort with "value too great for base"
+  # and the enclosing size-cap `if` would silently never fire either branch.
+  : > "$HOME/junk/one"
+  MSC_MAX_TRASH_GB=08 run bash "$SCRIPTS/trash-items.sh" "$HOME/junk/one"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"value too great for base"* ]] || { echo "$output"; false; }
+}
+
+@test "MSC_MAX_TRASH_GB=0 still refuses a non-empty batch (normalization did not break the working path)" {
+  printf 'x' > "$HOME/junk/tiny"
+  MSC_MAX_TRASH_GB=0 run bash "$SCRIPTS/trash-items.sh" "$HOME/junk/tiny"
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"Refusing a bulk operation"* ]] || false
+  [ -f "$HOME/junk/tiny" ] || false
+}
+
+@test "a refusal via the item cap prints the normalized GB, not the raw octal-looking string (08 -> 8GB)" {
+  local i paths=()
+  for i in $(seq 1 101); do
+    : > "$HOME/junk/o$i"
+    paths+=("$HOME/junk/o$i")
+  done
+  MSC_MAX_TRASH_GB=08 run bash "$SCRIPTS/trash-items.sh" "${paths[@]}"
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"Refusing a bulk operation"* ]] || false
+  [[ "$output" == *"limits: 100 items, 8GB"* ]] || { echo "$output"; false; }
+  [[ "$output" != *"08GB"* ]] || { echo "printed unnormalized 08GB: $output"; false; }
+}
